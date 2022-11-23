@@ -1,0 +1,27 @@
+{
+    "name": "avadim/manticore-query-builder-php",
+    "description": "",
+    "keywords": [
+		"manticoresoftware",
+        "manticoresearch",
+        "spinx",
+        "search"
+    ],
+    "type": "library",
+    "homepage": "https://github.com/manticore-query-builder-php",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "avadim\\Manticore\\": "./src/Manticore"
+        }
+    },
+    "require": {
+        "php": "^7.4",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-mbstring": "*",
+        "ext-pdo": "*",
+        "manticoresoftware/manticoresearch-php": "^2.0",
+        "illuminate/collections": "^8.83"
+    }
+}
