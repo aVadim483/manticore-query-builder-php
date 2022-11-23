@@ -199,7 +199,7 @@ class Query
                 $result['meta'][$item['Variable_name']] = $item['Value'];
             }
         }
-        elseif (is_array($response)) {
+        elseif ($response && is_array($response)) {
             $row = reset($response);
             if (array_key_first($response) === 0 && is_array($row)) {
                 $result['result'] = [
@@ -207,6 +207,18 @@ class Query
                     'data' => Collection::make($response),
                 ];
             }
+            else {
+                $result['result'] = [
+                    'type' => 'array',
+                    'data' => $response,
+                ];
+            }
+        }
+        else {
+            $result['result'] = [
+                'type' => 'bool',
+                'data' => true,
+            ];
         }
 
         return $result;
@@ -1046,6 +1058,9 @@ var_dump($sql);
         return new Result($result);
     }
 
+    /**
+     * @return array
+     */
     public function columnsType(): array
     {
         $types = [];
@@ -1065,14 +1080,18 @@ var_dump($sql);
     public function optimize(bool $sync = false): Result
     {
         $this->command = 'OPTIMIZE';
-        $index = $this->getIndex();
-        $index->optimize($sync);
+        $sql = 'OPTIMIZE INDEX ' . $this->_sqlIndex();
+        if ($sync) {
+            $sql .= ' OPTION sync=1';
+        }
+        $this->client->query($sql);
         $result = [
             'command' => $this->command,
-            'query' => '',
+            'query' => $sql,
             'original' => null,
             'result' => [
-                'items' => [],
+                'type' => 'bool',
+                'data' => true,
             ]
         ];
 
