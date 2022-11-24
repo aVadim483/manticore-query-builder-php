@@ -65,16 +65,20 @@ class PDOClient
     /**
      * @param string $query
      * @param array|null $params
-     * @param array|null $columnTypes
      *
-     * @return array|false
+     * @return array
      */
-    public function select(string $query, ?array $params = [], ?array $columnTypes = [])
+    public function select(string $query, ?array $params = [])
     {
         $result = [];
         if ($stm = $this->dbh->prepare($query)) {
             if ($stm->execute($params)) {
-                $result = $stm->fetchAll(\PDO::FETCH_ASSOC);
+                do {
+                    $rows = $stm->fetchAll(\PDO::FETCH_ASSOC);
+                    if ($rows) {
+                        $result[] = $rows;
+                    }
+                } while ($stm->nextRowset());
             }
             else {
                 $this->error($query, $stm->errorInfo());

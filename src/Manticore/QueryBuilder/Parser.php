@@ -59,10 +59,10 @@ class Parser
             case 'SELECT':
                 $parts = [];
                 $mp = [];
-                if (preg_match('#^(SELECT)\s+(.+)\s+(FROM)\s+(.+)$#siU', $query, $m)) {
-                    $result['query'] = $command . ' ' . $this->_formatFields($m[2]) . ' FROM';
+                if (preg_match('#^SELECT\s+(?P<select>.+)\s+FROM\s+(?P<from>.+)(?P<facet>\s+FACET\s+.+)?$#siU', $query, $m)) {
+                    $result['query'] = $command . ' ' . $this->_formatFields($m['select']) . ' FROM';
 
-                    [$exp1, $exp2] = $this->_extractExpression($m[4]);
+                    [$exp1, $exp2] = $this->_extractExpression($m['from']);
                     if ($exp2 !== null) {
                         // has sub query
                         $sub = $this->parseSql(substr($exp1, 1, -1));
@@ -74,6 +74,21 @@ class Parser
                             $result['index'] = $this->_formatTables($mp['tables']);
                             $parts[] = $result['index'];
                         }
+                    }
+                    if (!empty($m['facet'])) {
+                        $facets = [];
+                        if (preg_match_all('/\s+FACET\s+/siU', ' ' . $m['facet'], $mf, PREG_OFFSET_CAPTURE)) {
+                            foreach ($mf[0] as $n => $chunk) {
+                                if (isset($mf[0][$n + 1])) {
+                                    $facets[] = trim(substr($m['facet'], $chunk[1], $mf[0][$n + 1][1] - $chunk[1]));
+                                }
+                                else {
+                                    $facets[] = trim(substr($m['facet'], $chunk[1]));
+                                }
+                            }
+                        }
+                        $result['facets'] = $facets;
+                        $mp['facet'] = $m['facet'];
                     }
                 }
                 elseif (preg_match('#^(SELECT)\s+(.+)$#siU', $query, $m)) {
@@ -101,6 +116,10 @@ class Parser
                 if (!empty($mp['option'])) {
                     $parts[] ='OPTION';
                     $parts[] = $this->_formatOptionParams($mp['option']);
+                }
+                if (!empty($mp['facet'])) {
+                    // all facets in one element
+                    $parts[] = $mp['facet'];
                 }
                 $result['query'] .= ' ' . implode(' ', $parts);
 

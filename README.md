@@ -26,3 +26,36 @@ Manticore::create('products', function (SchemaIndex $index) {
 });
 
 ```
+
+## Facets
+```
+use avadim\Manticore\QueryBuilder\Facet;
+
+// Plain SQL
+$response = Manticore::sql('SELECT * FROM products FACET country FACET price')->exec();
+
+// Use builder
+$response = ManticoreDb::table('products')->facet('country')->facet('price')->get();
+ 
+// With additional facet options
+$response = ManticoreDb::table('products')
+    ->facet('country', function (Facet $facet) {
+        $facet->limit(2);
+    })
+    ->facet('price', function (Facet $facet) {
+        $facet->alias('cost')->limit(3);
+    })
+    ->get()
+;
+
+// get facets
+$response->facets();
+```
+Facet methods
+* alias(string $alias)
+* byExpr(string $expr)
+* distinct(string $column)
+* orderBy(string $names)
+* orderByDesc(string $names)
+* limit(int $limit)
+* limit(int $offset, int $limit)

@@ -5,9 +5,6 @@ declare(strict_types=1);
 namespace avadim\Manticore\QueryBuilder;
 
 use avadim\Manticore\QueryBuilder\Client\PDOClient;
-use Illuminate\Support\Collection;
-use Manticoresearch\Client;
-use Manticoresearch\Index;
 use avadim\Manticore\QueryBuilder\Schema\SchemaIndex;
 
 class Query
@@ -32,6 +29,8 @@ class Query
     private ?string $match = null;
     private array $limit = [];
     private array $options = [];
+    private array $facets = [];
+
     private QueryConditionSet $conditions;
 
     /**
@@ -75,12 +74,17 @@ class Query
             $this->select('*');
         }
 
-        return [
+        $query = [
             'command' => $this->command,
             'index' => $this->_sqlIndex(),
             'query' => $this->_makeSql(),
             'original' => null,
         ];
+        if (!empty($this->facets)) {
+            $query['facets'] = $this->facets;
+        }
+
+        return $query;
     }
 
     /**
@@ -93,8 +97,12 @@ class Query
         $types = $this->columnsType();
         $result = [];
         foreach ($rows as $num => $row) {
-            $row['_id'] = (int)$row['_id'];
-            $row['_score'] = (int)$row['_score'];
+            if (isset($row['_id'])) {
+                $row['_id'] = (int)$row['_id'];
+            }
+            if (isset($row['_score'])) {
+                $row['_score'] = (int)$row['_score'];
+            }
             $resNum = $row['_id'] ?: $num;
             foreach ($row as $col => $val) {
                 if (isset($types[$col])) {
@@ -128,11 +136,38 @@ class Query
                     }
 
                 }
+                else {
+                    if (preg_match('/^(\w+)\(/', $col, $m)) {
+                        $row[$col] = $this->_castFuncResult($m[1], $val);
+                    }
+                }
             }
             $result[$resNum] = $row;
         }
 
         return $result;
+    }
+
+    /**
+     * @param $func
+     * @param $val
+     *
+     * @return mixed
+     */
+    protected function _castFuncResult($func, $val)
+    {
+        switch (strtoupper($func)) {
+            case 'BIGINT':
+            case 'INTEGER':
+            case 'UINT':
+            case 'SINT':
+            case 'COUNT':
+                return (int)$val;
+            case 'DOUBLE':
+                return (float)$val;
+        }
+
+        return $val;
     }
 
     /**
@@ -165,7 +200,6 @@ class Query
             'command' => $parsedSql['command'],
             'query' => $parsedSql['query'],
             'exec_time' => $time,
-            'result' => []
         ];
 
         if ($parsedSql['command'] === 'SHOW TABLES') {
@@ -185,17 +219,27 @@ class Query
             }
             $result['result'] = [
                 'type' => 'collection',
-                'data' => Collection::make($data),
+                'data' => $data,
             ];
         }
         elseif ($parsedSql['command'] === 'SELECT') {
             $result['result'] = [
                 'type' => 'collection',
-                'data' => Collection::make($this->_castResult($response)),
+                'data' => $this->_castResult($response[0]),
             ];
+            unset($response[0]);
+            if (!empty($parsedSql['facets']) && $response) {
+                $result['facets'] = [];
+                foreach ($parsedSql['facets'] as $n => $desc) {
+                    $result['facets'][] = [
+                        'desc' => $desc,
+                        'data' => isset($response[$n + 1]) ? $this->_castResult($response[$n + 1]) : [],
+                    ];
+                }
+            }
             $meta = $this->client->select('SHOW META');
             $result['meta'] = [];
-            foreach ($meta as $item) {
+            foreach ($meta[0] as $item) {
                 $result['meta'][$item['Variable_name']] = $item['Value'];
             }
         }
@@ -204,7 +248,7 @@ class Query
             if (array_key_first($response) === 0 && is_array($row)) {
                 $result['result'] = [
                     'type' => 'collection',
-                    'data' => Collection::make($response),
+                    'data' => $response,
                 ];
             }
             else {
@@ -682,7 +726,27 @@ class Query
         return $options;
     }
 
-    protected function _makeSql()
+    /**
+     * @return string
+     */
+    protected function _sqlFacets(): string
+    {
+        if ($this->facets) {
+            $facets = [];
+            foreach ($this->facets as $facet) {
+                $facets[] = (string)$facet;
+            }
+
+            return ' ' . implode(' ', $facets);
+        }
+
+        return '';
+    }
+
+    /**
+     * @return string
+     */
+    protected function _makeSql(): string
     {
         if ($this->command === 'SELECT' || $this->command === 'UPDATE' || $this->command === 'DELETE') {
             if ($this->command === 'SELECT') {
@@ -713,6 +777,9 @@ class Query
             }
             if ($options = $this->_sqlOptions()) {
                 $sql .= ' OPTION ' . $options;
+            }
+            if ($this->command === 'SELECT') {
+                $sql .= $this->_sqlFacets();
             }
         }
 
@@ -827,28 +894,45 @@ var_dump($sql);
     }
 
     /**
-     * @param $limit
-     * @param $offset
+     * limit(<limit>)
+     * limit(<offset>, <limit>)
+     *
+     * @param int|array $param1
+     * @param int|null $param2
      *
      * @return $this
      */
-    public function limit($limit, $offset = null): Query
+    public function limit($param1, ?int $param2 = null): Query
     {
-        if ($limit === null) {
-            $this->limit = [];
-        }
-        elseif (is_array($limit)) {
-            $this->limit = array_values($limit);
-        }
-        elseif ($offset !== null) {
-            $this->limit = [$limit, $offset];
+        if ($param2 === null) {
+            // limit
+            $this->limit = [$param1, null];
         }
         else {
-            $this->limit = [$limit, null];
+            // limit, offset
+            $this->limit = [$param2, $param1];
         }
 
         return $this;
     }
+
+    /**
+     * @param string $column
+     * @param callable|null $callback
+     *
+     * @return $this
+     */
+    public function facet(string $column, ?callable $callback = null): Query
+    {
+        $facet = new Facet($column);
+        if ($callback) {
+            $callback($facet);
+        }
+        $this->facets[] = $facet;
+
+        return $this;
+    }
+
 
     /**
      * @return Result
@@ -1040,18 +1124,15 @@ var_dump($sql);
      */
     public function describe(): Result
     {
-        $indexName = $this->_sqlIndex();
-        if (empty($this->indexPool[$indexName])) {
-            $sql = 'DESCRIBE ' . $indexName;
-            $this->indexPool[$indexName]['describe'] = $this->client->query($sql);
-        }
+        $sql = 'DESCRIBE ' . $this->_sqlIndex();
+        $response = $this->client->query($sql);
         $result = [
-            'command' => $this->command,
-            'query' => '',
+            'command' => 'DESCRIBE',
+            'query' => $sql,
             'original' => null,
             'result' => [
                 'type' => 'array',
-                'data' => $this->indexPool[$indexName]['describe'],
+                'data' => $response,
             ]
         ];
 
@@ -1063,13 +1144,20 @@ var_dump($sql);
      */
     public function columnsType(): array
     {
-        $types = [];
-        $info = $this->describe();
-        foreach ($info->result() as $row) {
-            $types[$row['Field']] = $row['Type'];
+        $indexName = $this->_sqlIndex();
+        if (empty($this->indexPool[$indexName]['columnsType'])) {
+            $types = [];
+            if (empty($this->indexPool[$indexName]['describe'])) {
+                $this->indexPool[$indexName]['describe'] = $this->describe();
+            }
+            $info = $this->indexPool[$indexName]['describe'];
+            foreach ($info->result() as $row) {
+                $types[$row['Field']] = $row['Type'];
+            }
+            $this->indexPool[$indexName]['columnsType'] = $types;
         }
 
-        return $types;
+        return $this->indexPool[$indexName]['columnsType'];
     }
 
     /**

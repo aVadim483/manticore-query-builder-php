@@ -12,6 +12,7 @@ class Result
     private ?string $query;
     private ?float $execTime;
     private array $meta;
+    private array $facets;
 
     private string $resultType;
     private $resultData;
@@ -26,11 +27,17 @@ class Result
         $this->query = $data['query'] ?? null;
         $this->execTime = $data['exec_time'] ?? null;
         $this->meta = $data['meta'] ?? [];
+        $this->facets = $data['facets'] ?? [];
         
         $this->resultType = $data['result']['type'];
         $this->resultData = $data['result']['data'];
         if ($this->resultType === 'collection') {
-            $row = $this->first();
+            if (is_array($this->resultData)) {
+                $row = reset($this->resultData);
+            }
+            else {
+                $row = $this->first();
+            }
             $this->columns = $row ? array_keys($row) : [];
         }
         else {
@@ -115,6 +122,14 @@ class Result
     public function meta(): array
     {
         return $this->meta ?? [];
+    }
+
+    /**
+     * @return array
+     */
+    public function facets(): array
+    {
+        return $this->facets ? array_column($this->facets, 'data') : [];
     }
 
     /**
