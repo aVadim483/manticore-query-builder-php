@@ -6,10 +6,11 @@ namespace avadim\Manticore\QueryBuilder;
 
 use Illuminate\Support\Collection;
 
-class Result
+class ResultSet
 {
     private ?string $command;
-    private ?string $query;
+    private ?string $sqlQuery;
+    private ?string $status = '';
     private ?float $execTime;
     private array $meta;
     private array $facets;
@@ -17,21 +18,24 @@ class Result
     private string $resultType;
     private $resultData;
     private array $columns;
+    private array $variables;
+
 
     /**
      * @param $data
+     * @param string|null $status
      */
-    public function __construct($data)
+    public function __construct($data, ?string $status = null)
     {
         $this->command = $data['command'] ?? null;
-        $this->query = $data['query'] ?? null;
+        $this->sqlQuery = $data['query'] ?? null;
         $this->execTime = $data['exec_time'] ?? null;
         $this->meta = $data['meta'] ?? [];
         $this->facets = $data['facets'] ?? [];
-        
+
         $this->resultType = $data['result']['type'];
         $this->resultData = $data['result']['data'];
-        if ($this->resultType === 'collection') {
+        if ($this->resultType === 'collection' || $this->resultType === 'array') {
             if (is_array($this->resultData)) {
                 $row = reset($this->resultData);
             }
@@ -39,9 +43,24 @@ class Result
                 $row = $this->first();
             }
             $this->columns = $row ? array_keys($row) : [];
+            foreach ($this->resultData as $item) {
+                if (isset($item['Variable_name'], $item['Value'])) {
+                    $this->variables[$item['Variable_name']] = $item['Value'];
+                }
+            }
         }
         else {
             $this->columns = [];
+        }
+
+        if (!empty($data['response']['error'])) {
+            $this->status = 'error';
+        }
+        elseif ($status) {
+            $this->status = $status;
+        }
+        else {
+            $this->status = 'done';
         }
     }
 
@@ -56,9 +75,9 @@ class Result
     /**
      * @return string|null
      */
-    public function query(): ?string
+    public function sqlQuery(): ?string
     {
-        return $this->query;
+        return $this->sqlQuery;
     }
 
     /**
@@ -94,14 +113,15 @@ class Result
      */
     public function count(): int
     {
-        if (!empty($this->resultData)) {
-            if (is_array($this->resultData) || ($this->resultData instanceof Collection)) {
-                return count($this->resultData);
-            }
-            return 1;
-        }
+        return $this->meta['total'] ? (int)$this->meta['total'] : 0;
+    }
 
-        return 0;
+    /**
+     * @return int
+     */
+    public function total(): int
+    {
+        return $this->meta['total_found'] ? (int)$this->meta['total_found'] : 0;
     }
 
     /**
@@ -109,13 +129,18 @@ class Result
      */
     public function first()
     {
-        if ($this->resultData instanceof Collection) {
-            return $this->resultData->first();
+        if (!empty($this->resultData)) {
+            if (is_array($this->resultData)) {
+                return reset($this->resultData);
+            }
+            elseif ($this->resultData instanceof Collection) {
+                return $this->resultData->first();
+            }
         }
 
         return null;
     }
-    
+
     /**
      * @return array
      */
@@ -150,5 +175,23 @@ class Result
     public function success(): bool
     {
         return empty($this->data['response']['error']) && empty($this->data['response']['warning']);
+    }
+
+    /**
+     * @return string
+     */
+    public function status(): ?string
+    {
+        return $this->status;
+    }
+
+    /**
+     * @param $name
+     *
+     * @return mixed|null
+     */
+    public function variable($name)
+    {
+        return $this->variables[$name] ?? null;
     }
 }

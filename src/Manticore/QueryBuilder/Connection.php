@@ -13,11 +13,13 @@ class Connection
     private array $config;
     private PDOClient $client;
 
-
-    public function __construct($config)
+    /**
+     * @param array $config
+     */
+    public function __construct(array $config)
     {
         $this->config = $config;
-        $this->client = new PDOClient($config['client']);
+        $this->client = new PDOClient($config);
     }
 
     /**
@@ -69,9 +71,9 @@ class Connection
      * @param string $name
      * @param array|SchemaIndex|callable $schema
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function create(string $name, $schema): Result
+    public function create(string $name, $schema): ResultSet
     {
         return $this->query()->create($name, $schema);
     }
@@ -79,9 +81,9 @@ class Connection
     /**
      * @param string|null $pattern
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function showTables(?string $pattern = null): Result
+    public function showTables(?string $pattern = null): ResultSet
     {
         return $this->query()->showTables($pattern);
     }
@@ -89,9 +91,9 @@ class Connection
     /**
      * @param string|null $pattern
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function showVariables(?string $pattern = null): Result
+    public function showVariables(?string $pattern = null): ResultSet
     {
         return $this->query()->showVariables($pattern);
     }

@@ -26,6 +26,14 @@ class QueryCondition
         $this->arg = $arg;
     }
 
+    public static function _escape_string($val): string
+    {
+        if (is_numeric($val)) {
+            return (string)$val;
+        }
+        return "'" . addslashes($val) . "'";
+    }
+
     /**
      * @param $bool
      * @param $field
@@ -48,10 +56,10 @@ class QueryCondition
         }
         $op = strtoupper($arg1);
         if (is_array($arg2)) {
-            $arg = array_map('addslashes', $arg2);
+            $arg = array_map([self::class, '_escape_string'], $arg2);
         }
         else {
-            $arg = addslashes($arg2);
+            $arg = self::_escape_string($arg2);
         }
 
         if ($op === 'IN') {

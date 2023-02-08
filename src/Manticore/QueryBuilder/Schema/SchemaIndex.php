@@ -48,6 +48,11 @@ class SchemaIndex
         return implode(', ', $columns);
     }
 
+    public function indexEngine()
+    {
+
+    }
+
     /**
      * Text columns are indexed and can be searched for keywords. Full-text columns can only be used in MATCH() clause
      * and cannot be used for sorting or aggregation

@@ -12,17 +12,20 @@ Manticore::table('articles')->match('peace')->get();
 ## Create index
 
 ```
+Manticore::sql('create table products(title text, data json)')->exec();
 Manticore::create('products', ['title'=> 'text', 'data' => 'json']);
 Manticore::create('products', function (SchemaIndex $index) {
     $index->text('title');
-    $index->json('data');
+    $index->json('data'); 
 });
 
-// columns width additional options
+// columns with additional options
+Manticore::sql("create table products(title text, price float engine='columnar') engine='rowwise'")->exec();
 Manticore::create('products', ['title'=> 'text', 'data' => ['type' => 'json', 'engine'=>'rowwise']]);
 Manticore::create('products', function (SchemaIndex $index) {
     $index->text('title');
-    $index->json('data')->engine('rowwise');
+    $index->json('data')->columnEngine('columnar');
+    $index->indexEngine('rowwise)
 });
 
 ```
@@ -43,7 +46,8 @@ $response = ManticoreDb::table('products')
         $facet->limit(2);
     })
     ->facet('price', function (Facet $facet) {
-        $facet->alias('cost')->limit(3);
+        $facet->alias('cost');
+        $facet->limit(3);
     })
     ->get()
 ;

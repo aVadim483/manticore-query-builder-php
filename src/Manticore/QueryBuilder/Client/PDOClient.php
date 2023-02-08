@@ -23,7 +23,7 @@ class PDOClient
             $this->dsn = $this->config['dsn'];
         }
         else {
-            $this->dsn = 'mysql:host=' . ($this->config['host'] ?: 'localhost') . ';port=' . ($this->config['port'] ?: '9306');
+            $this->dsn = 'mysql:host=' . ($this->config['host'] ?? 'localhost') . ';port=' . ($this->config['port'] ?? '9306');
         }
         $this->dbh = new \PDO($this->dsn, $this->config['username'] ?? null, $this->config['password'] ?? null);
     }
@@ -43,16 +43,16 @@ class PDOClient
     /**
      * @param string $query
      * @param array|null $params
-     * @param array|null $columnTypes
      *
-     * @return array|false
+     * @return array
      */
-    public function query(string $query, ?array $params = [], ?array $columnTypes = [])
+    public function query(string $query, ?array $params = []): array
     {
         $result = [];
         if ($stm = $this->dbh->prepare($query)) {
             if ($stm->execute($params)) {
-                $result = $stm->fetchAll(\PDO::FETCH_ASSOC);
+                $result['data'] = $stm->fetchAll(\PDO::FETCH_ASSOC);
+                $result['count'] = $stm->rowCount();
             }
             else {
                 $this->error($query, $stm->errorInfo());
@@ -60,6 +60,35 @@ class PDOClient
         }
 
         return $result;
+    }
+
+    /**
+     * @param $rows
+     * @param $colMeta
+     *
+     * @return mixed
+     */
+    protected function castValues($rows, $colMeta)
+    {
+        foreach ($rows as $numRow => $row) {
+            foreach ($colMeta as $meta) {
+                switch ($meta['native_type']) {
+                    case 'TINY':
+                    case 'SHORT':
+                    case 'LONG':
+                    case 'LONGLONG':
+                    case 'INT24':
+                    case 'TIMESTAMP':
+                        $rows[$numRow][$meta['name']] =  (int)$row[$meta['name']];
+                        break;
+                    case 'NULL':
+                        $rows[$numRow][$meta['name']] =  null;
+                        break;
+                }
+            }
+        }
+
+        return $rows;
     }
 
     /**
@@ -73,10 +102,16 @@ class PDOClient
         $result = [];
         if ($stm = $this->dbh->prepare($query)) {
             if ($stm->execute($params)) {
+                $result['data'] = [];
                 do {
                     $rows = $stm->fetchAll(\PDO::FETCH_ASSOC);
                     if ($rows) {
-                        $result[] = $rows;
+                        $n = 0;
+                        $colMeta = [];
+                        foreach ($rows[0] as $col) {
+                            $colMeta[] = $stm->getColumnMeta($n++);
+                        }
+                        $result['data'][] = $this->castValues($rows, $colMeta);
                     }
                 } while ($stm->nextRowset());
             }
@@ -92,14 +127,17 @@ class PDOClient
      * @param string $query
      * @param array|null $params
      *
-     * @return string|false
+     * @return array
      */
-    public function insert(string $query, ?array $params = [])
+    public function insert(string $query, ?array $params = []): array
     {
-        $result = null;
+        $result = [];
         if ($stm = $this->dbh->prepare($query)) {
             if ($stm->execute($params)) {
-                $result = $this->dbh->lastInsertId();
+                $id = $this->dbh->lastInsertId();
+                if ($id) {
+                    $result['data'] = (int)$id;
+                }
             }
             else {
                 $this->error($query, $stm->errorInfo());

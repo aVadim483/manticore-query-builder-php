@@ -14,6 +14,7 @@ class Query
     private string $prefix;
     private bool $forcePrefix = false;
 
+    private $logger = null;
     private $client;
     private Parser $parser;
     private array $indexPool = [];
@@ -30,14 +31,16 @@ class Query
     private array $limit = [];
     private array $options = [];
     private array $facets = [];
+    private array $highlight = [];
 
     private QueryConditionSet $conditions;
 
     /**
      * @param array $config
      * @param string|null $indexName
+     * @param $logger
      */
-    public function __construct(array $config, ?string $indexName = null)
+    public function __construct(array $config, ?string $indexName = null, $logger = null)
     {
         $this->config = $config;
         $this->prefix = $config['prefix'] ?? '';
@@ -46,19 +49,31 @@ class Query
         }
         $this->parser = new Parser($this->prefix);
         $this->schema = new SchemaIndex();
+        if ($logger) {
+            $this->setLogger($logger);
+        }
 
         if (is_object($config['client'])) {
             $this->client = $config['client'];
         }
         else {
-            //$this->client = new Client($config['client']);
-            $this->client = new PDOClient();
+            $this->client = new PDOClient($this->config['client'] ?? []);
         }
 
         $this->conditions = new QueryConditionSet();
         if ($indexName) {
             $this->index($indexName);
         }
+    }
+
+    public function setLogger($logger)
+    {
+        $this->logger = $logger;
+    }
+
+    public function logger()
+    {
+        return $this->logger;
     }
 
     /**
@@ -71,7 +86,7 @@ class Query
         }
 
         if (!$this->command) {
-            $this->select('*');
+            $this->selectColumns('*');
         }
 
         $query = [
@@ -94,15 +109,9 @@ class Query
      */
     protected function _castResult(array $rows): array
     {
-        $types = $this->columnsType();
+        $types = $this->columnTypes();
         $result = [];
         foreach ($rows as $num => $row) {
-            if (isset($row['_id'])) {
-                $row['_id'] = (int)$row['_id'];
-            }
-            if (isset($row['_score'])) {
-                $row['_score'] = (int)$row['_score'];
-            }
             $resNum = $row['_id'] ?: $num;
             foreach ($row as $col => $val) {
                 if (isset($types[$col])) {
@@ -184,7 +193,7 @@ class Query
 
         $time = microtime(true);
         if ($parsedSql['command'] === 'INSERT') {
-            $response = (int)$this->client->insert($parsedSql['query']);
+            $response = $this->client->insert($parsedSql['query']);
         }
         elseif ($parsedSql['command'] === 'SELECT') {
             $query = 'SELECT id as _id, weight() as _score, ' . substr($parsedSql['query'], 6);
@@ -204,7 +213,7 @@ class Query
 
         if ($parsedSql['command'] === 'SHOW TABLES') {
             $data = [];
-            foreach ($response as $n => $index) {
+            foreach ($response['data'] as $n => $index) {
                 foreach ($index as $key => $val) {
                     $data[$n][$key] = $val;
                     if ($key === 'Index') {
@@ -222,39 +231,53 @@ class Query
                 'data' => $data,
             ];
         }
+        elseif ($parsedSql['command'] === 'INSERT') {
+            $result['result'] = [
+                'type' => 'id',
+                'data' => $response['data'],
+                'status' => 'inserted',
+            ];
+        }
         elseif ($parsedSql['command'] === 'SELECT') {
             $result['result'] = [
                 'type' => 'collection',
-                'data' => $this->_castResult($response[0]),
+                'data' => !empty($response['data'][0]) ? $this->_castResult($response['data'][0]) : [],
             ];
-            unset($response[0]);
-            if (!empty($parsedSql['facets']) && $response) {
+            unset($response['data'][0]);
+            if (!empty($parsedSql['facets']) && $response['data']) {
                 $result['facets'] = [];
                 foreach ($parsedSql['facets'] as $n => $desc) {
                     $result['facets'][] = [
                         'desc' => $desc,
-                        'data' => isset($response[$n + 1]) ? $this->_castResult($response[$n + 1]) : [],
+                        'data' => isset($response['data'][$n + 1]) ? $this->_castResult($response['data'][$n + 1]) : [],
                     ];
                 }
             }
             $meta = $this->client->select('SHOW META');
             $result['meta'] = [];
-            foreach ($meta[0] as $item) {
+            foreach ($meta['data'][0] as $item) {
                 $result['meta'][$item['Variable_name']] = $item['Value'];
             }
         }
-        elseif ($response && is_array($response)) {
-            $row = reset($response);
-            if (array_key_first($response) === 0 && is_array($row)) {
+        elseif ($parsedSql['command'] === 'UPDATE') {
+            $result['result'] = [
+                'type' => 'id',
+                'data' => $response['count'],
+                'status' => 'updated',
+            ];
+        }
+        elseif ($response['data'] && is_array($response['data'])) {
+            $row = reset($response['data']);
+            if (array_key_first($response['data']) === 0 && is_array($row)) {
                 $result['result'] = [
                     'type' => 'collection',
-                    'data' => $response,
+                    'data' => $response['data'],
                 ];
             }
             else {
                 $result['result'] = [
                     'type' => 'array',
-                    'data' => $response,
+                    'data' => $response['data'],
                 ];
             }
         }
@@ -333,7 +356,7 @@ class Query
      */
     public function index(string $name): Query
     {
-        $this->index = ['real_name' => Parser::resolveIndexName($name)];
+        $this->index = ['real_name' => Parser::resolveIndexName($name, $this->prefix, $this->forcePrefix)];
 
         return $this;
     }
@@ -355,7 +378,7 @@ class Query
      */
     public function match(string $match): Query
     {
-        $this->select(null);
+        $this->selectColumns(null);
         $this->match = $match;
 
         return $this;
@@ -385,6 +408,22 @@ class Query
             unset($this->options[$key]);
         } else {
             $this->options[$key] = $value;
+        }
+
+        return $this;
+    }
+
+    public function highlight(array $options = [], array $fields = [], string $query = null): Query
+    {
+        $this->highlight['alias'] = '_highlight';
+        if ($options) {
+            $this->highlight['options'] = $options;
+        }
+        if ($fields) {
+            $this->highlight['fields'] = $fields;
+        }
+        if ($query) {
+            $this->highlight['$query'] = $query;
         }
 
         return $this;
@@ -614,10 +653,30 @@ class Query
     protected function _sqlSelectColumns(): string
     {
         if ($this->select) {
-            return implode(', ', array_map('addslashes', $this->select));
+            $result = implode(', ', array_map('addslashes', $this->select));
+        }
+        else {
+            $result = '*';
         }
 
-        return '*';
+        if ($this->highlight) {
+            $highlight = 'HIGHLIGHT(';
+            if (!empty($this->highlight['options'])) {
+                $options = [];
+                foreach ($this->highlight['options'] as $key => $val) {
+                    if (is_numeric($val)) {
+                        $options[] = $key . '=' . addslashes($val);
+                    }
+                    else {
+                        $options[] = $key . '=\'' . addslashes($val) . '\'';
+                    }
+                }
+                $highlight .= '{' . implode(',', $options) . '}';
+            }
+            $highlight .= ') AS ' . $this->highlight['alias'];
+            $result .= ', ' . $highlight;
+        }
+        return $result;
     }
 
     /**
@@ -627,8 +686,14 @@ class Query
     {
         if ($this->update) {
             $set = [];
+            $types = $this->columnTypes();
             foreach ($this->update as $column => $value) {
-                $set[] = $column . '=' . Parser::formatValue($value);
+                if (isset($types[$column])) {
+                    $set[] = $column . '=' . Parser::formatValue($value, $types[$column]);
+                }
+                else {
+                    $set[] = $column . '=' . Parser::formatValue($value);
+                }
             }
 
             return implode(', ', $set);
@@ -672,9 +737,7 @@ class Query
      */
     protected function _sqlWhere(): string
     {
-        $where = $this->conditions->asString();
-
-        return $where;
+        return $this->conditions->asString();
     }
 
     /**
@@ -766,7 +829,7 @@ class Query
             }
             if ($where) {
                 if ($match !== null) {
-                    $sql .= ' AND (' . $where . ')';
+                    $sql .= ' AND (' . trim($where) . ')';
                 }
                 else {
                     $sql .= ' WHERE' . $where;
@@ -783,14 +846,14 @@ class Query
             }
         }
 
-        elseif ($this->command === 'INSERT') {
+        elseif ($this->command === 'INSERT' || $this->command === 'REPLACE') {
             $columns = $values = [];
-            $types = $this->columnsType();
+            $types = $this->columnTypes();
             foreach ($this->update as $col => $val) {
                 $columns[] = $col;
                 $values[] = Parser::formatValue($val, $types[$col] ?? null);
             }
-            $sql = 'INSERT INTO ' . $this->_sqlIndex() . '(' . implode(',', $columns) . ') VALUES('. implode(',', $values) . ')';
+            $sql = $this->command . ' INTO ' . $this->_sqlIndex() . '(' . implode(',', $columns) . ') VALUES('. implode(',', $values) . ')';
         }
 
         elseif ($this->command === 'CREATE') {
@@ -802,7 +865,7 @@ class Query
         else {
             $sql = '';
         }
-var_dump($sql);
+
         return $sql;
     }
 
@@ -811,7 +874,7 @@ var_dump($sql);
      *
      * @return $this
      */
-    public function select($columns = '*'): Query
+    public function selectColumns($columns = '*'): Query
     {
         $this->command = 'SELECT';
         if (is_string($columns)) {
@@ -825,9 +888,20 @@ var_dump($sql);
     }
 
     /**
+     * @param string|array|null $columns
+     *
+     * @return $this
+     */
+    public function select($columns = '*'): Query
+    {
+
+        return $this->selectColumns($columns);
+    }
+
+    /**
      * Make schema for a new index
      *
-     * @param array|Index|callable $schema
+     * @param array|callable $schema
      *
      * @return $this
      */
@@ -897,7 +971,7 @@ var_dump($sql);
      * limit(<limit>)
      * limit(<offset>, <limit>)
      *
-     * @param int|array $param1
+     * @param int|array|null $param1
      * @param int|null $param2
      *
      * @return $this
@@ -912,6 +986,13 @@ var_dump($sql);
             // limit, offset
             $this->limit = [$param2, $param1];
         }
+
+        return $this;
+    }
+
+    public function offset(int $param): Query
+    {
+        $this->limit[1] = $param;
 
         return $this;
     }
@@ -933,25 +1014,23 @@ var_dump($sql);
         return $this;
     }
 
-
     /**
-     * @return Result
+     * @return ResultSet
      */
-    public function exec(): Result
+    public function exec(): ResultSet
     {
         $request = $this->parse();
-
         $result = $this->_execQuery($request);
 
-        return new Result($result);
+        return new ResultSet($result);
     }
 
     /**
      * Allows to get the query transformation tree of a query without running it. Useful for testing queries.
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function explain(): Result
+    public function explain(): ResultSet
     {
         $response = [
             'command' => 'EXPLAIN',
@@ -968,43 +1047,44 @@ var_dump($sql);
 
         $response['result'] = $this->_explainQuery($params);
 
-        return new Result($response);
+        return new ResultSet($response);
     }
 
     /**
-     * @return Result
+     * @return ResultSet
      */
-    public function delete(): Result
+    public function delete(): ResultSet
     {
         $this->command = 'DELETE';
 
-        return $this->exec();
+        $request = $this->parse();
+        $result = $this->_execQuery($request);
+
+        return new ResultSet($result, 'deleted');
     }
 
     /**
-     * @param string $name
      * @param array|SchemaIndex|callable $schema
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function create(string $name, $schema): Result
+    public function create($schema): ResultSet
     {
-        $this->index($name);
         $this->schema($schema);
         $this->command = 'CREATE';
 
         $request = $this->parse();
         $result = $this->_execQuery($request);
 
-        return new Result($result);
+        return new ResultSet($result, 'created');
     }
 
     /**
      * @param array|null $schema
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function alter(?array $schema = null): Result
+    public function alter(?array $schema = null): ResultSet
     {
         if ($schema) {
             $this->schema($schema);
@@ -1019,7 +1099,7 @@ var_dump($sql);
         $request = $this->parse();
         $result = $this->_execQuery($request);
 
-        return new Result($this->_execQuery($result));
+        return new ResultSet($this->_execQuery($result));
     }
 
     /**
@@ -1027,9 +1107,9 @@ var_dump($sql);
      *
      * @param bool|null $reconfigure
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function truncate(?bool $reconfigure = false): Result
+    public function truncate(?bool $reconfigure = false): ResultSet
     {
         $this->command = 'TRUNCATE';
         $sql = 'TRUNCATE TABLE ' . $this->_sqlIndex() . (!empty($reconfigure) ? ' WITH RECONFIGURE' : '');
@@ -1040,7 +1120,7 @@ var_dump($sql);
         ];
         $result = $this->_execQuery($request);
 
-        return new Result($result);
+        return new ResultSet($result, 'truncated');
     }
 
     /**
@@ -1048,9 +1128,9 @@ var_dump($sql);
      *
      * @param bool|null $ifExists
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function drop(?bool $ifExists = false): Result
+    public function drop(?bool $ifExists = false): ResultSet
     {
         $this->command = 'DROP';
         $sql = 'DROP TABLE ' . (!empty($ifExists) ? 'IF EXISTS ' : '') . $this->_sqlIndex();
@@ -1061,13 +1141,13 @@ var_dump($sql);
         ];
         $result = $this->_execQuery($request);
 
-        return new Result($result);
+        return new ResultSet($result, 'dropped');
     }
 
     /**
-     * @return Result
+     * @return ResultSet
      */
-    public function dropIfExists(): Result
+    public function dropIfExists(): ResultSet
     {
         return $this->drop(true);
     }
@@ -1075,14 +1155,17 @@ var_dump($sql);
     /**
      * @param string|null $pattern
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function showTables(?string $pattern = null): Result
+    public function showTables(?string $pattern = null): ResultSet
     {
         $this->command = 'SHOW TABLES';
         $sql = 'SHOW TABLES';
         if ($pattern) {
-            $sql .= ' LIKE \'' . Parser::resolveIndexName($pattern) . '\'';
+            $sql .= ' LIKE \'' . Parser::resolveIndexName($pattern, $this->prefix, $this->forcePrefix) . '\'';
+        }
+        elseif ($this->forcePrefix && $pattern !== '' && $pattern !== '%') {
+            $sql .= ' LIKE \'' . $this->prefix . '%\'';
         }
         $request = [
             'command' => $this->command,
@@ -1091,15 +1174,15 @@ var_dump($sql);
         ];
         $result = $this->_execQuery($request);
 
-        return new Result($result);
+        return new ResultSet($result);
     }
 
     /**
      * @param string|null $pattern
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function showVariables(?string $pattern = null): Result
+    public function showVariables(?string $pattern = null): ResultSet
     {
         $this->command = 'SHOW VARIABLES';
         $sql = 'SHOW VARIABLES';
@@ -1113,16 +1196,16 @@ var_dump($sql);
         ];
         $result = $this->_execQuery($request);
 
-        return new Result($result);
+        return new ResultSet($result);
     }
 
     /**
      * DESCRIBE statement lists table columns and their associated types. Columns are document ID, full-text fields,
      * and attributes
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function describe(): Result
+    public function describe(): ResultSet
     {
         $sql = 'DESCRIBE ' . $this->_sqlIndex();
         $response = $this->client->query($sql);
@@ -1132,17 +1215,17 @@ var_dump($sql);
             'original' => null,
             'result' => [
                 'type' => 'array',
-                'data' => $response,
+                'data' => $response['data'],
             ]
         ];
 
-        return new Result($result);
+        return new ResultSet($result);
     }
 
     /**
      * @return array
      */
-    public function columnsType(): array
+    public function columnTypes(): array
     {
         $indexName = $this->_sqlIndex();
         if (empty($this->indexPool[$indexName]['columnsType'])) {
@@ -1163,9 +1246,9 @@ var_dump($sql);
     /**
      * @param bool $sync
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function optimize(bool $sync = false): Result
+    public function optimize(bool $sync = false): ResultSet
     {
         $this->command = 'OPTIMIZE';
         $sql = 'OPTIMIZE INDEX ' . $this->_sqlIndex();
@@ -1183,127 +1266,157 @@ var_dump($sql);
             ]
         ];
 
-        return new Result($result);
-    }
-
-    /**
-     * @return Result
-     */
-    public function all(): Result
-    {
-        $this->select()->limit(null);
-
-        return $this->get();
+        return new ResultSet($result);
     }
 
     /**
      * @param string|array|null $columns
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function get($columns = '*'): Result
+    public function search($columns = '*'): ResultSet
     {
         if (func_num_args()) {
-            $this->select($columns);
+            $this->selectColumns($columns);
         }
         else {
-            $this->select(null);
+            $this->selectColumns(null);
         }
 
         return $this->exec();
+    }
+
+
+    /**
+     * @param string|array|null $columns
+     *
+     * @return mixed|null
+     */
+    public function get($columns = '*')
+    {
+        if (func_num_args()) {
+            $this->selectColumns($columns);
+        }
+        else {
+            $this->selectColumns(null);
+        }
+
+        return $this->exec()->result();
+    }
+
+    /**
+     * @return mixed|null
+     */
+    public function first()
+    {
+        return $this->limit(1)->exec()->first();
     }
 
     /**
      * @param int $id
      *
-     * @return Result
+     * @return mixed|null
      */
-    public function find(int $id): Result
+    public function find(int $id)
     {
-        $result = $this->where('id', $id)->limit(1)->get();
-        $result->setResult('record', $result->first());
-
-        return $result;
-    }
-
-    /**
-     * @return Result
-     */
-    public function first(): Result
-    {
-        $result = $this->limit(1)->get();
-        $result->setResult('record', $result->first());
-
-        return $result;
+        return $this->where('id', $id)->first();
     }
 
     /**
      * @param array $data
      * @param int|null $id
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function insert(array $data, ?int $id = 0): Result
+    public function insert(array $data, ?int $id = 0): ResultSet
     {
         $this->command = 'INSERT';
         $this->update = $data;
 
-        return $this->exec();
+        $request = $this->parse();
+        $result = $this->_execQuery($request);
+
+        return new ResultSet($result, 'inserted');
     }
 
     /**
      * @param array $data
      * @param int|null $id
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function update(array $data, ?int $id = 0): Result
+    public function update(array $data, ?int $id = 0): ResultSet
     {
         $this->command = 'UPDATE';
         $this->update = $data;
+        if ($id) {
+            $this->where('id', $id);
+        }
 
-        return $this->exec();
+        $request = $this->parse();
+        $result = $this->_execQuery($request);
+
+        return new ResultSet($result, 'updated');
     }
 
     /**
      * @param array $data
      * @param int|null $id
      *
-     * @return Result
+     * @return ResultSet
      */
-    public function replace(array $data, ?int $id = 0): Result
+    public function replace(array $data, ?int $id = 0): ResultSet
     {
         $this->command = 'REPLACE';
-        $columns = implode(',', array_keys($data));
-        $values = Parser::formatArray(array_values($data));
-        $sql = 'REPLACE INTO ' . $this->_sqlIndex() . '(' . $columns . ') VALUES'. $values;
 
-        $request = [
-            'command' => $this->command,
-            'query' => $sql,
-            'original' => null,
-        ];
-
-        if (isset($data['id'])) {
-            $id = $data['id'];
-            unset($data['id']);
+        $this->update = $data;
+        if ($id) {
+            $this->update['id'] = $id;
         }
 
-        $params = [
-            'body' => [
-                'index' => $this->_sqlIndex(),
-                'id' => $id,
-                'doc' => $data
+        $request = $this->parse();
+        $result = $this->_execQuery($request);
+
+        return new ResultSet($result, 'replaced');
+    }
+
+    /**
+     * @return ResultSet
+     */
+    public function status(): ResultSet
+    {
+        $sql = 'SHOW INDEX ' . $this->_sqlIndex() . ' STATUS';
+        $response = $this->client->query($sql);
+        $result = [
+            'command' => 'STATUS',
+            'query' => $sql,
+            'original' => null,
+            'result' => [
+                'type' => 'array',
+                'data' => $response['data'],
             ]
         ];
 
-        $response = $this->client->replace($params);
-        $result['result']['items'][] = ['_id' => $response['_id']];
-
-        $result['exec_time'] = $this->client->getLastResponse()->getTime();
-
-        return new Result($result);
+        return new ResultSet($result);
     }
 
+    /**
+     * @return ResultSet
+     */
+    public function settings(): ResultSet
+    {
+        $sql = 'SHOW INDEX ' . $this->_sqlIndex() . ' SETTINGS';
+        $response = $this->client->query($sql);
+        $result = [
+            'command' => 'SETTINGS',
+            'query' => $sql,
+            'original' => null,
+            'result' => [
+                'type' => 'array',
+                'data' => $response['data'],
+            ]
+        ];
 
+        return new ResultSet($result);
+    }
 }

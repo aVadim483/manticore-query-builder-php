@@ -60,7 +60,6 @@ class Parser
                 $parts = [];
                 $mp = [];
                 if (preg_match('#^SELECT\s+(?P<select>.+)\s+FROM\s+(?P<from>.+)(?P<facet>\s+FACET\s+.+)?$#siU', $query, $m)) {
-                    $result['query'] = $command . ' ' . $this->_formatFields($m['select']) . ' FROM';
 
                     [$exp1, $exp2] = $this->_extractExpression($m['from']);
                     if ($exp2 !== null) {
@@ -70,14 +69,18 @@ class Parser
                         preg_match('#^((WHERE)\s+(?P<where>.+))?(\s+(GROUP\s+BY)\s+(?P<group>.+))?(\s+(ORDER\s+BY)\s+(?P<order>.+))?(\s+(LIMIT)\s+(?P<limit>.+))?(\s+(OPTION)\s+(?P<option>.+))?$#siU', $exp2, $mp);
                     }
                     else {
-                        if (preg_match('#^(?P<tables>[\w\.]+)(\s+(WHERE)\s+(?P<where>.+))?(\s+(GROUP\s+BY)\s+(?P<group>.+))?(\s+(ORDER\s+ BY)\s+(?P<order>.+))?(\s+(LIMIT)\s+(?P<limit>.+))?(\s+(OPTION)\s+(?P<option>.+))?$#siU', $exp1, $mp)) {
+                        if (preg_match('#^(?P<tables>[\w\.\?]+)(\s+(WHERE)\s+(?P<where>.+))?(\s+(GROUP\s+BY)\s+(?P<group>.+))?(\s+(ORDER\s+ BY)\s+(?P<order>.+))?(\s+(LIMIT)\s+(?P<limit>.+))?(\s+(OPTION)\s+(?P<option>.+))?$#siU', $exp1, $mp)) {
                             $result['index'] = $this->_formatTables($mp['tables']);
                             $parts[] = $result['index'];
                         }
                     }
+
+                    $result['query'] = $command . ' ' . $this->_formatFields($m['select']) . ' FROM';
+
                     if (!empty($m['facet'])) {
                         $facets = [];
                         if (preg_match_all('/\s+FACET\s+/siU', ' ' . $m['facet'], $mf, PREG_OFFSET_CAPTURE)) {
+                            /** @var array $chunk */
                             foreach ($mf[0] as $n => $chunk) {
                                 if (isset($mf[0][$n + 1])) {
                                     $facets[] = trim(substr($m['facet'], $chunk[1], $mf[0][$n + 1][1] - $chunk[1]));
@@ -152,7 +155,7 @@ class Parser
                 break;
 
             case 'CREATE TABLE':
-                if (preg_match('#^CREATE\s+TABLE\s+(?P<if>IF NOT EXISTS\s+)?(?P<table>[\w.?]+)\s+\((?P<fields>.+)\)(?P<options>.*)$#siU', $query, $m)) {
+                if (preg_match('#^CREATE\s+TABLE\s+(?P<if>IF NOT EXISTS\s+)?(?P<table>[\w.?]+)\s*\((?P<fields>.+)\)(?P<options>.*)$#siU', $query, $m)) {
                     $result['query'] = $command;
                     if (!empty($m['if'])) {
                         $result['query'] .= ' IF NOT EXISTS';
@@ -180,8 +183,19 @@ class Parser
                         $result['query'] .= ' LIKE \'' . $pattern . '\'';
                     }
                 }
-
                 break;
+
+            case 'OPTIMIZE':
+                $result['query'] = 'OPTIMIZE INDEX';
+                if (preg_match('#^OPTIMIZE\s+INDEX\s+(.+)$#si', $query, $m)) {
+                    $result['query'] .= ' ' . $this->_tableName($m[1]);
+                }
+                break;
+
+            default:
+                $result['query'] = preg_replace_callback('#(\W)(\?\w+)#si', function ($m) {
+                    return $m[1] . $this->_tableName($m[2]);
+                }, $query);
         }
 
         return $result;
@@ -202,6 +216,7 @@ class Parser
             'EXPLAIN', 'DESCRIBE',
             'SHOW\s+TABLES', 'SHOW\s+INDEXES',
             'SHOW\s+META', 'SHOW\s+AGENT\s+STATUS', 'SHOW\s+COLLATION', 'SHOW\s+VARIABLES', 'SHOW\s+CHARACTER\s+SET',
+            'OPTIMIZE',
         ];
 
         foreach ($commands as $pattern) {
@@ -299,6 +314,7 @@ class Parser
      */
     protected function _formatFields(string $str): string
     {
+        /*
         $params = array_map('trim', explode(',', $str));
         foreach ($params as $n => $param) {
             if (preg_match('#^(.+)\s+as\s+([\w\.]+)$#', $param, $m)) {
@@ -307,6 +323,8 @@ class Parser
         }
 
         return implode(', ', $params);
+        */
+        return $str;
     }
 
     /**
@@ -564,7 +582,8 @@ class Parser
             case 'string':
             case 'str':
             case 'text':
-                return '\'' . addslashes($value) . '\'';
+            case 'object':
+                return '\'' . addslashes((string)$value) . '\'';
             case 'boolean':
             case 'bool':
                 return $value ? '1' : '0';
@@ -572,7 +591,16 @@ class Parser
             case 'integer':
             case 'int':
             case 'timestamp':
-                return (string)((int)$value);
+                if (is_numeric($value)) {
+                    $val = (int)$value;
+                }
+                elseif (is_string($value)) {
+                    $val = strtotime($value);
+                }
+                else {
+                    $val = strtotime((string)$value);
+                }
+                return (string)$val;
             case 'float':
             case 'double':
                 $value = (float)$value;

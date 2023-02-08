@@ -53,17 +53,17 @@ class QueryConditionSet
     }
 
     /**
-     * @param $needBool
+     * @param bool|null $needBool
      *
      * @return string
      */
-    public function asString($needBool = false): string
+    public function asString(?bool $needBool = false): string
     {
         $result = '';
         /** @var QueryCondition $condition */
         foreach ($this->operands as $n => $condition) {
             $condition->bind($this->params);
-            $result .= $condition->asString($n);
+            $result .= ($result ? ' ' : '') . $condition->asString($n);
         }
 
         return $result;

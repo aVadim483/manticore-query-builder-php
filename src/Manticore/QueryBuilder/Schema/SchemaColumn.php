@@ -47,11 +47,21 @@ class SchemaColumn
      *
      * @return $this
      */
-    public function engine($engine): SchemaColumn
+    public function columnEngine($engine): SchemaColumn
     {
         $this->engine = $engine;
 
         return $this;
+    }
+
+    /**
+     * @param $engine
+     *
+     * @return $this
+     */
+    public function engine($engine): SchemaColumn
+    {
+        return $this->columnEngine($engine);
     }
 
     /**
@@ -60,7 +70,7 @@ class SchemaColumn
     public function columnar(): SchemaColumn
     {
 
-        return $this->engine('columnar');
+        return $this->columnEngine('columnar');
     }
 
     /**
