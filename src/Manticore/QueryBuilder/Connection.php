@@ -6,7 +6,6 @@ namespace avadim\Manticore\QueryBuilder;
 
 use avadim\Manticore\QueryBuilder\Client\PDOClient;
 use avadim\Manticore\QueryBuilder\Schema\SchemaIndex;
-use Manticoresearch\Client;
 
 class Connection
 {

@@ -4,8 +4,15 @@ namespace avadim\Manticore\QueryBuilder;
 
 class QueryConditionSet
 {
+    private ?string $bool = '';
     private array $operands = [];
     private array $params = [];
+
+
+    public function __construct(?string $bool = null)
+    {
+        $this->bool = $bool;
+    }
 
 
     protected function _add(string $bool, $field, $arg1, $arg2 = null)
@@ -60,10 +67,23 @@ class QueryConditionSet
     public function asString(?bool $needBool = false): string
     {
         $result = '';
+        $strings = [];
         /** @var QueryCondition $condition */
         foreach ($this->operands as $n => $condition) {
             $condition->bind($this->params);
-            $result .= ($result ? ' ' : '') . $condition->asString($n);
+            $strings[] = $condition->asString($n);
+        }
+        if ($strings) {
+            if (count($strings) === 1) {
+                $result = reset($strings);
+            }
+            else {
+                $result = '(' . implode($strings) . ')';
+            }
+            $result = str_replace(['( ', ' ('], '(', $result);
+            if ($this->bool) {
+                $result = $this->bool . $result;
+            }
         }
 
         return $result;

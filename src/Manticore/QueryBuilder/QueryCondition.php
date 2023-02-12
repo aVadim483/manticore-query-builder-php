@@ -45,7 +45,7 @@ class QueryCondition
     public static function create($bool, $field, $arg1, $arg2 = null)
     {
         if (is_callable($field)) {
-            $condition = new QueryConditionSet();
+            $condition = new QueryConditionSet($bool);
             $field($condition);
 
             return $condition;
@@ -65,11 +65,20 @@ class QueryCondition
         if ($op === 'IN') {
             $condition = new self($bool, $field, 'IN', '(' . implode(',', (array)$arg) . ')');
         }
+        elseif ($op === 'NOT IN') {
+            $condition = new self($bool, $field, 'NOT IN', '(' . implode(',', (array)$arg) . ')');
+        }
         elseif ($op === 'BETWEEN') {
             $condition = new self($bool, $field, 'BETWEEN', $arg[0] . ' AND ' . $arg[1]);
         }
+        elseif ($op === 'NOT BETWEEN') {
+            $condition = new self($bool, $field, 'NOT BETWEEN', $arg[0] . ' AND ' . $arg[1]);
+        }
         elseif ($op === 'IS NULL') {
             $condition = new self($bool, $field, 'IS NULL');
+        }
+        elseif ($op === 'IS NOT NULL') {
+            $condition = new self($bool, $field, 'IS NOT NULL');
         }
         else {
             $condition = new self($bool, $field, $op, $arg);
@@ -115,6 +124,17 @@ class QueryCondition
         if (!$this->operator) {
             $result = $field;
         }
+        else {
+            $operator = $this->operator;
+            if ($this->operator[0] >= 'A') {
+                $operator = ' ' . $operator;
+                if ($arg !== '') {
+                    $operator .= ' ';
+                }
+            }
+            $result = $field . $operator . $arg;
+        }
+/*
         elseif ($this->operator === 'IS NULL') {
             $result = $field . ' IS NULL';
         }
@@ -127,7 +147,7 @@ class QueryCondition
             }
             $result = $field . $operator . $arg;
         }
-
+*/
         if ($needBool) {
             $result = $this->bool . ' (' . $result . ')';
         }

@@ -14,11 +14,12 @@ class Builder
     private static $logger = null;
 
     /**
-     * @param array $config
+     * @param array|null $config
+     * @param $logger
      *
      * @return void
      */
-    public static function init(array $config, $logger = null)
+    public static function init(?array $config = [], $logger = null)
     {
         self::$config = $config;
         self::$logger = $logger;
@@ -39,11 +40,6 @@ class Builder
                     'username' => null,
                     'password' => null,
                     'timeout' => 5,
-                    'connection_timeout' => 1,
-                    'proxy' => null,
-                    'persistent' => true,
-                    'retries' => 2,
-
                     'prefix' => '',
                     'force_prefix' => false,
                 ],
@@ -58,12 +54,15 @@ class Builder
      */
     public static function connection(?string $connectionName = null): Connection
     {
-        if ($connectionName === null) {
-            $connectionName = 'default';
+        if (!$connectionName) {
+            $connectionName = self::$config['defaultConnection'] ?? 'default';
         }
         if (empty(self::$connections[$connectionName])) {
             if (empty(self::$config)) {
                 self::$config = self::defaultConfig();
+            }
+            if (!isset(self::$config['connections'][$connectionName])) {
+                throw new \RuntimeException('The connection named "' . $connectionName . '" was not defined in the config');
             }
             self::$connections[$connectionName] = new Connection(self::$config['connections'][$connectionName]);
         }

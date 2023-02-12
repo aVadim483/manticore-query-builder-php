@@ -74,6 +74,15 @@ class SchemaColumn
     }
 
     /**
+     * @return $this
+     */
+    public function rowwise(): SchemaColumn
+    {
+
+        return $this->columnEngine('rowwise');
+    }
+
+    /**
      * @param $fastFetch
      *
      * @return $this

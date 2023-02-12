@@ -65,6 +65,8 @@ class ResultSet
     }
 
     /**
+     * Returns command
+     *
      * @return string|null
      */
     public function command(): ?string
@@ -73,6 +75,8 @@ class ResultSet
     }
 
     /**
+     * Returns SQL query
+     *
      * @return string|null
      */
     public function sqlQuery(): ?string
@@ -81,6 +85,8 @@ class ResultSet
     }
 
     /**
+     * Returns execution time
+     *
      * @return float|null
      */
     public function execTime(): ?float
@@ -89,7 +95,7 @@ class ResultSet
     }
 
     /**
-     * Array of columns names
+     * Returns array of columns names
      *
      * @return string[]
      */
@@ -109,6 +115,8 @@ class ResultSet
     }
 
     /**
+     * Returns count of result rows
+     *
      * @return int
      */
     public function count(): int
@@ -117,6 +125,8 @@ class ResultSet
     }
 
     /**
+     * Returns total number of rows that match the condition in index
+     *
      * @return int
      */
     public function total(): int
@@ -125,6 +135,8 @@ class ResultSet
     }
 
     /**
+     * Returns the first row of rows set
+     *
      * @return mixed|null
      */
     public function first()
@@ -150,6 +162,8 @@ class ResultSet
     }
 
     /**
+     * Returns facets
+     *
      * @return array
      */
     public function facets(): array
@@ -178,6 +192,8 @@ class ResultSet
     }
 
     /**
+     * The last result of query
+     *
      * @return string
      */
     public function status(): ?string

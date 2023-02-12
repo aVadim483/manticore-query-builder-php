@@ -26,6 +26,9 @@ class PDOClient
             $this->dsn = 'mysql:host=' . ($this->config['host'] ?? 'localhost') . ';port=' . ($this->config['port'] ?? '9306');
         }
         $this->dbh = new \PDO($this->dsn, $this->config['username'] ?? null, $this->config['password'] ?? null);
+        if (!empty($config['timeout'])) {
+            $this->dbh->setAttribute(\PDO::ATTR_TIMEOUT, $config['timeout']);
+        }
     }
 
     /**

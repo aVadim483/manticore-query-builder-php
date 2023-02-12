@@ -28,6 +28,7 @@ class Query
     private array $update = [];
 
     private ?string $match = null;
+    private array $orders = [];
     private array $limit = [];
     private array $options = [];
     private array $facets = [];
@@ -100,6 +101,16 @@ class Query
         }
 
         return $query;
+    }
+
+    /**
+     * @return string
+     */
+    public function toSql(): string
+    {
+        $querySet = $this->parse();
+
+        return $querySet['query'];
     }
 
     /**
@@ -563,7 +574,7 @@ class Query
      *
      * @return $this
      */
-    public function andWhere($field, $arg1, $arg2 = null): Query
+    public function andWhere($field, $arg1 = null, $arg2 = null): Query
     {
         $this->conditions->andWhere($field, $arg1, $arg2);
 
@@ -577,7 +588,7 @@ class Query
      *
      * @return $this
      */
-    public function orWhere($field, $arg1, $arg2 = null): Query
+    public function orWhere($field, $arg1 = null, $arg2 = null): Query
     {
         $this->conditions->orWhere($field, $arg1, $arg2);
 
@@ -616,6 +627,36 @@ class Query
 
     /**
      * @param $field
+     *
+     * @return $this
+     */
+    public function whereNotNull($field): Query
+    {
+        return $this->andWhere($field, 'IS NOT NULL');
+    }
+
+    /**
+     * @param $field
+     *
+     * @return $this
+     */
+    public function andWhereNotNull($field): Query
+    {
+        return $this->andWhere($field, 'IS NOT NULL');
+    }
+
+    /**
+     * @param $field
+     *
+     * @return $this
+     */
+    public function orWhereNotNull($field): Query
+    {
+        return $this->orWhere($field, 'IS NOT NULL');
+    }
+
+    /**
+     * @param $field
      * @param array $arg
      *
      * @return $this
@@ -645,6 +686,83 @@ class Query
     public function orWhereIn($field, array $arg): Query
     {
         return $this->orWhere($field, 'IN', $arg);
+    }
+
+    /**
+     * @param $field
+     * @param array $arg
+     *
+     * @return $this
+     */
+    public function whereNotIn($field, array $arg): Query
+    {
+        return $this->andWhere($field, 'NOT IN', $arg);
+    }
+
+    /**
+     * @param $field
+     * @param array $arg
+     *
+     * @return $this
+     */
+    public function andWhereNotIn($field, array $arg): Query
+    {
+        return $this->andWhere($field, 'NOT IN', $arg);
+    }
+
+    /**
+     * @param $field
+     * @param array $arg
+     *
+     * @return $this
+     */
+    public function orWhereNotIn($field, array $arg): Query
+    {
+        return $this->orWhere($field, 'NOT IN', $arg);
+    }
+
+    /**
+     * @param $field
+     * @param array $arg
+     *
+     * @return $this
+     */
+    public function whereBetween($field, array $arg): Query
+    {
+        return $this->where($field, 'BETWEEN', $arg);
+    }
+
+    /**
+     * @param $field
+     * @param array $arg
+     *
+     * @return $this
+     */
+    public function orWhereBetween($field, array $arg): Query
+    {
+        return $this->orWhere($field, 'BETWEEN', $arg);
+    }
+
+    /**
+     * @param $field
+     * @param array $arg
+     *
+     * @return $this
+     */
+    public function whereNotBetween($field, array $arg): Query
+    {
+        return $this->where($field, 'NOT BETWEEN', $arg);
+    }
+
+    /**
+     * @param $field
+     * @param array $arg
+     *
+     * @return $this
+     */
+    public function orWhereNotBetween($field, array $arg): Query
+    {
+        return $this->orWhere($field, 'NOT BETWEEN', $arg);
     }
 
     /**
@@ -757,6 +875,18 @@ class Query
     /**
      * @return string
      */
+    protected function _sqlOrders(): string
+    {
+        if ($this->orders) {
+            return implode(',', $this->orders);
+        }
+
+        return '';
+    }
+
+    /**
+     * @return string
+     */
     protected function _sqlOptions(): string
     {
         $options = '';
@@ -834,6 +964,9 @@ class Query
                 else {
                     $sql .= ' WHERE' . $where;
                 }
+            }
+            if ($orders = $this->_sqlOrders()) {
+                $sql .= ' ORDER BY ' . $orders;
             }
             if ($limit = $this->_sqlLimit()) {
                 $sql .= ' LIMIT ' . $limit;
@@ -915,6 +1048,7 @@ class Query
             $schema($this->schema);
         }
         else {
+            //var_dump($schema);exit;
             foreach($schema as $name => $column) {
                 if (is_int($name) && is_string($column)) {
                     if (strpos($column, ' ')) {
@@ -965,6 +1099,30 @@ class Query
     public function rowwise(): Query
     {
         return $this->engine('rowwise');
+    }
+
+    /**
+     * @param string $names
+     *
+     * @return $this
+     */
+    public function orderBy(string $names): Query
+    {
+        $this->orders[] = $names . ' ASC';
+
+        return $this;
+    }
+
+    /**
+     * @param string $names
+     *
+     * @return $this
+     */
+    public function orderByDesc(string $names): Query
+    {
+        $this->orders[] = $names . ' DESC';
+
+        return $this;
     }
 
     /**
@@ -1064,12 +1222,24 @@ class Query
     }
 
     /**
-     * @param array|SchemaIndex|callable $schema
+     * create('index', [..])
+     * create('index', function(SchemaIndex $index) {..})
+     * index('index')->create([..])
+     * index('index')->create(function(SchemaIndex $index) {..})
+     *
+     * @param string|array|SchemaIndex|callable $name
+     * @param array|SchemaIndex|callable|null $schema
      *
      * @return ResultSet
      */
-    public function create($schema): ResultSet
+    public function create($name, $schema = null): ResultSet
     {
+        if (func_num_args() === 2 && is_string($name) && $schema) {
+            $this->index($name);
+        }
+        elseif (func_num_args() === 1) {
+            $schema = $name;
+        }
         $this->schema($schema);
         $this->command = 'CREATE';
 
