@@ -3,10 +3,12 @@
 Query Builder for Manticore Search in PHP with Laravel-like syntax
 
 Features
-* MySQL connection is used via PDO (because Manticore is SQL-first)
+* MySQL multiple connections via PDO (because Manticore is SQL-first)
 * Placeholders as prefix in table names
 * Named parameters in expressions
 * Clear Laravel-like syntax
+* Support MATCH() and multi-level WHERE for SELECT
+* Support faceted search
 
 ```php
 use avadim\Manticore\QueryBuilder\QueryBuilder as ManticoreDb;
@@ -32,16 +34,15 @@ $config = [
 ManticoreDb::init($config);
 
 // Create table
-$res = ManticoreDb::table('?products')->create([
-    'created_at' => 'timestamp',
-    'manufacturer' => 'string',
-    'title' => 'text',
-    'info' => 'json',
-    'price' => ['type' => 'float'],
-    'categories' => 'multi',
-    'on_sale' => 'bool',
-]);
-// $res->result() => true
+ManticoreDb::create('products', function (SchemaTable $table) {
+    $table->timestamp('created_at');
+    $table->string('manufacturer'); 
+    $table->text('title'); 
+    $table->json('info'); 
+    $table->float('price'); 
+    $table->multi('categories'); 
+    $table->bool('on_sale'); 
+});
 
 // Insert row
 $insertRow = [
@@ -56,30 +57,10 @@ $insertRow = [
 $res = ManticoreDb::table('?products')->insert($insertSet);
 // $res->result() => <id> of the new record
 
-ManticoreDb::table('articles')->match('peace')->get();
+$rows = ManticoreDb::table('articles')->match('galaxy')->where('price', '>', 1100)->get();
 ```
 
 More detail documentation is available in [docs](/docs/README.md) folder.
-
-## Create table
-
-```php
-ManticoreDb::sql('create table products(title text, data json)')->exec();
-ManticoreDb::create('products', ['title'=> 'text', 'data' => 'json']);
-ManticoreDb::create('products', function (SchemaIndex $table) {
-    $table->text('title');
-    $table->json('data'); 
-});
-
-// columns with additional options
-ManticoreDb::sql("create table products(title text, price float engine='columnar') engine='rowwise'")->exec();
-ManticoreDb::create('products', ['title'=> 'text', 'data' => ['type' => 'json', 'engine' => 'rowwise']]);
-ManticoreDb::create('products', function (SchemaIndex $table) {
-    $table->text('title');
-    $table->json('data')->columnEngine('columnar');
-});
-
-```
 
 ## Listing tables
 ```php
@@ -110,36 +91,3 @@ $res = ManticoreDb::table('test')->describe();
 
 ```
 
-## Facets
-```php
-use avadim\Manticore\QueryBuilder\Facet;
-
-// Plain SQL
-$response = ManticoreDb::sql('SELECT * FROM products FACET country FACET price')->exec();
-
-// Use builder
-$response = ManticoreDb::table('products')->facet('country')->facet('price')->get();
- 
-// With additional facet options
-$response = ManticoreDb::table('products')
-    ->facet('country', function (Facet $facet) {
-        $facet->limit(2);
-    })
-    ->facet('price', function (Facet $facet) {
-        $facet->alias('cost');
-        $facet->limit(3);
-    })
-    ->get()
-;
-
-// get facets
-$response->facets();
-```
-Facet methods
-* alias(string $alias)
-* byExpr(string $expr)
-* distinct(string $column)
-* orderBy(string $names)
-* orderByDesc(string $names)
-* limit(int $limit)
-* limit(int $offset, int $limit)

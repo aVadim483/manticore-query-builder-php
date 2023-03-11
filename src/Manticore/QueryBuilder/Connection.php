@@ -11,6 +11,7 @@ class Connection
 {
     private array $config;
     private PDOClient $client;
+    private ResultSet $lastResultSet;
 
     /**
      * @param array $config
@@ -76,27 +77,85 @@ class Connection
      */
     public function create(string $name, $schema): ResultSet
     {
-        return $this->query()->create($name, $schema);
+        $this->lastResultSet = $this->query()->create($name, $schema);;
+
+        return $this->lastResultSet;
     }
 
     /**
      * @param string|null $pattern
      *
-     * @return ResultSet
+     * @return array
      */
-    public function showTables(?string $pattern = null): ResultSet
+    public function showTables(?string $pattern = null): array
     {
-        return $this->query()->showTables($pattern);
+        $this->lastResultSet = $this->query()->showTables($pattern);
+
+        return $this->lastResultSet->result();
     }
 
     /**
      * @param string|null $pattern
      *
-     * @return ResultSet
+     * @return array
      */
-    public function showVariables(?string $pattern = null): ResultSet
+    public function showVariables(?string $pattern = null): array
     {
-        return $this->query()->showVariables($pattern);
+        $this->lastResultSet = $this->query()->showVariables($pattern);
+
+        return $this->lastResultSet->result();
     }
 
+    /**
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public function describe(string $tableName): array
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->describe();
+
+        return $this->lastResultSet->result();
+    }
+
+    /**
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public function describeTable(string $tableName): array
+    {
+        return $this->describe($tableName);
+    }
+
+    /**
+     * @param string $tableName
+     *
+     * @return string
+     */
+    public function showCreate(string $tableName): string
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->showCreate();
+        $result = $this->lastResultSet->result();
+
+        return $result['Create Table'] ?? '';
+    }
+
+    /**
+     * @param string $tableName
+     *
+     * @return string
+     */
+    public function showCreateTable(string $tableName): string
+    {
+        return $this->showCreate($tableName);
+    }
+
+    /**
+     * @return ResultSet|null
+     */
+    public function lastResultSet(): ?ResultSet
+    {
+        return $this->lastResultSet ?? null;
+    }
 }

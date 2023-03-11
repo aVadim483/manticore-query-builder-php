@@ -116,9 +116,9 @@ class Builder
     /**
      * @param string|null $pattern
      *
-     * @return ResultSet
+     * @return array
      */
-    public static function showTables(?string $pattern = null): ResultSet
+    public static function showTables(?string $pattern = null): array
     {
         return self::connection()->showTables($pattern);
     }
@@ -126,10 +126,30 @@ class Builder
     /**
      * @param string|null $pattern
      *
-     * @return ResultSet
+     * @return array
      */
-    public static  function showVariables(?string $pattern = null): ResultSet
+    public static  function showVariables(?string $pattern = null): array
     {
         return self::connection()->showVariables($pattern);
+    }
+
+    /**
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public static  function describe(string $tableName): array
+    {
+        return self::connection()->describe($tableName);
+    }
+
+    /**
+     * @param string $tableName
+     *
+     * @return string
+     */
+    public static  function showCreate(string $tableName): string
+    {
+        return self::connection()->showCreate($tableName);
     }
 }

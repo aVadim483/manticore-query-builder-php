@@ -108,6 +108,20 @@ class Facet
     }
 
     /**
+     * offset(<offset>)
+     *
+     * @param int $param
+     *
+     * @return $this
+     */
+    public function offset(int $param): Facet
+    {
+        $this->limit[0] = $param;
+
+        return $this;
+    }
+
+    /**
      * @return string
      */
     protected function _sqlDistinct(): string

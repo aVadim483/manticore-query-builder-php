@@ -84,7 +84,12 @@ class Query
     public function parse(): array
     {
         if ($this->sql) {
-            return $this->parser->parse($this->sql);
+            $query = $this->parser->parse($this->sql);
+            if (!empty($query['command'])) {
+                $this->command = $query['command'];
+            }
+
+            return $query;
         }
 
         if (!$this->command) {
@@ -288,6 +293,12 @@ class Query
                 'type' => 'id',
                 'data' => $response['count'],
                 'status' => 'updated',
+            ];
+        }
+        elseif ($parsedSql['command'] === 'SHOW CREATE TABLE') {
+            $result['result'] = [
+                'type' => 'array',
+                'data' => $response['data'][0] ?? [],
             ];
         }
         elseif ($response['data'] && is_array($response['data'])) {
@@ -1392,6 +1403,23 @@ class Query
             'result' => [
                 'type' => 'array',
                 'data' => $response['data'],
+            ]
+        ];
+
+        return new ResultSet($result);
+    }
+
+    public function showCreate(): ResultSet
+    {
+        $sql = 'SHOW CREATE TABLE ' . $this->_sqlTable();
+        $response = $this->client->query($sql);
+        $result = [
+            'command' => 'SHOW CREATE TABLE',
+            'query' => $sql,
+            'original' => null,
+            'result' => [
+                'type' => 'array',
+                'data' => $response['data'][0] ?? [],
             ]
         ];
 

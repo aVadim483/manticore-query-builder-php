@@ -42,7 +42,7 @@ class ResultSet
             else {
                 $row = $this->first();
             }
-            $this->columns = $row ? array_keys($row) : [];
+            $this->columns = ($row && is_array($row)) ? array_keys($row) : [];
             foreach ($this->resultData as $item) {
                 if (isset($item['Variable_name'], $item['Value'])) {
                     $this->variables[$item['Variable_name']] = $item['Value'];

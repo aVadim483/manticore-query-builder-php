@@ -162,3 +162,12 @@ foreach ($res->facets(0) as $key => $facet) {
 }
 
 ```
+Facet methods you can use in a closure:
+* alias(string $alias)
+* byExpr(string $expr)
+* distinct(string $column)
+* orderBy(string $names)
+* orderByDesc(string $names)
+* limit(int $limit)
+* limit(int $offset, int $limit)
+* offset(int $offset)

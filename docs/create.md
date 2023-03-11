@@ -36,3 +36,11 @@ $fields = [
 $res = ManticoreDb::create('demo_test', $fields);
 $res = ManticoreDb::table('demo_test')->create($fields);
 ```
+
+## Drop tables
+
+```php
+$res = ManticoreDb::table('test')->drop();
+$res = ManticoreDb::table('test')->dropIfExists();
+
+```

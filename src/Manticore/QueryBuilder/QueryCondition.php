@@ -103,7 +103,7 @@ class QueryCondition
         return $this;
     }
 
-    public function asString($needBool = false)
+    public function asString($needBool = false): string
     {
         if (is_array($this->operand)) {
             $field = '';

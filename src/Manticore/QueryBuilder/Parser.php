@@ -223,8 +223,9 @@ class Parser
             'RENAME', 'ALTER', 'TRUNCATE',
             'CREATE\s+INDEX', 'CREATE\s+TABLE',
             'SET', 'DROP',
-            'EXPLAIN', 'DESCRIBE',
+            'EXPLAIN', 'DESCRIBE', 'DESC',
             'SHOW\s+TABLES', 'SHOW\s+INDEXES',
+            'SHOW\s+CREATE\s+TABLE',
             'SHOW\s+META', 'SHOW\s+AGENT\s+STATUS', 'SHOW\s+COLLATION', 'SHOW\s+VARIABLES', 'SHOW\s+CHARACTER\s+SET',
             'OPTIMIZE',
         ];

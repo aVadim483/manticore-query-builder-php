@@ -10,5 +10,7 @@
 
 [Searching](searching.md)
 
+[Listing & Describe Tables](tables.md)
+
 [ResultSet Class](result_set.md)
 
