@@ -62,32 +62,4 @@ $rows = ManticoreDb::table('articles')->match('galaxy')->where('price', '>', 110
 
 More detail documentation is available in [docs](/docs/README.md) folder.
 
-## Listing tables
-```php
-// Plain SQL
-$res = ManticoreDb::sql('SHOW TABLES LIKE <pattern>')->result();
-// or with the method
-$res = ManticoreDb::showTables('<pattern>')->result();
-/*
-Array
-(
-    [0] => Array
-        (
-            [Table] => <table_name>
-            [Name] => <table_name_with_placeholder>
-            [Type] => rt
-        )
-)
-*/
-// Get tables by pattern
-$res = ManticoreDb::showTables('abc%')->result();
-
-// Get tables with prefix
-$res = ManticoreDb::showTables('?%')->result();
-
-// Equals of {DESC | DESCRIBE} table [ LIKE pattern ]
-$res = ManticoreDb::table('test')->describe();
-// Returns array with columns Field and Type
-
-```
 
