@@ -10,6 +10,10 @@ Features
 * Support MATCH() and multi-level WHERE for SELECT
 * Support faceted search
 
+More detail documentation is available in [docs](/docs/README.md) folder.
+
+## Quick start guide
+
 ```php
 use avadim\Manticore\QueryBuilder\QueryBuilder as ManticoreDb;
 
