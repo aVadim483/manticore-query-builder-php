@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace avadim\Manticore\QueryBuilder;
 
 use avadim\Manticore\QueryBuilder\Client\PDOClient;
-use avadim\Manticore\QueryBuilder\Schema\SchemaIndex;
+use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
 
 class Connection
 {
@@ -47,28 +47,30 @@ class Connection
     }
 
     /**
-     * @param string $name
+     * Alias for table()
      *
-     * @return Query
-     */
-    public function table(string $name): Query
-    {
-        return $this->index($name);
-    }
-
-    /**
      * @param string $name
      *
      * @return Query
      */
     public function index(string $name): Query
     {
-        return $this->query()->index($name);
+        return $this->table($name);
     }
 
     /**
      * @param string $name
-     * @param array|SchemaIndex|callable $schema
+     *
+     * @return Query
+     */
+    public function table(string $name): Query
+    {
+        return $this->query()->table($name);
+    }
+
+    /**
+     * @param string $name
+     * @param array|SchemaTable|callable $schema
      *
      * @return ResultSet
      */

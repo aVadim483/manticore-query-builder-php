@@ -106,6 +106,9 @@ class ResultSet
 
     /**
      * Collection of rows
+     * or Array
+     * or Bigint
+     * or Boolean
      *
      * @return mixed|null
      */
@@ -115,7 +118,7 @@ class ResultSet
     }
 
     /**
-     * Returns count of result rows
+     * Returns count of result rows from SELECT
      *
      * @return int
      */
@@ -125,7 +128,7 @@ class ResultSet
     }
 
     /**
-     * Returns total number of rows that match the condition in index
+     * Returns total number of rows that match the condition in table
      *
      * @return int
      */
@@ -154,6 +157,8 @@ class ResultSet
     }
 
     /**
+     * Returns the meta data received after SQL request
+     *
      * @return array
      */
     public function meta(): array
@@ -164,11 +169,18 @@ class ResultSet
     /**
      * Returns facets
      *
+     * @param int|null $key
+     *
      * @return array
      */
-    public function facets(): array
+    public function facets(int $key = null): array
     {
-        return $this->facets ? array_column($this->facets, 'data') : [];
+        $facets = $this->facets ? array_column($this->facets, 'data') : [];
+        if ($key === null) {
+            return $facets;
+        }
+
+        return $facets[$key];
     }
 
     /**

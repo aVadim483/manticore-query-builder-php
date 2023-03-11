@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
-use avadim\Manticore\QueryBuilder\Schema\SchemaIndex;
+use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
 
 final class ManticoreQueryBuilderTest extends TestCase
 {
@@ -62,8 +62,8 @@ final class ManticoreQueryBuilderTest extends TestCase
         $this->assertTrue($res->result());
 
         // connection "test2"
-        ManticoreDb::connection('test2')->table('?products')->drop(true);
-        $res = ManticoreDb::connection('test2')->create('?products', function (SchemaIndex $index) {
+        ManticoreDb::connection('test2')->index('?products')->drop(true);
+        $res = ManticoreDb::connection('test2')->create('?products', function (SchemaTable $index) {
             $index->timestamp('created_at');
             $index->string('manufacturer');
             $index->text('title');
@@ -126,7 +126,7 @@ final class ManticoreQueryBuilderTest extends TestCase
         $this->assertTrue($res->result());
 
         // connection "test2"
-        $res = ManticoreDb::connection('test2')->table('?products')->drop();
+        $res = ManticoreDb::connection('test2')->index('?products')->drop();
         $this->assertTrue($res->result());
     }
 }

@@ -44,34 +44,12 @@ class PDOClient
     }
 
     /**
-     * @param string $query
-     * @param array|null $params
+     * @param array $rows
+     * @param $colMeta
      *
      * @return array
      */
-    public function query(string $query, ?array $params = []): array
-    {
-        $result = [];
-        if ($stm = $this->dbh->prepare($query)) {
-            if ($stm->execute($params)) {
-                $result['data'] = $stm->fetchAll(\PDO::FETCH_ASSOC);
-                $result['count'] = $stm->rowCount();
-            }
-            else {
-                $this->error($query, $stm->errorInfo());
-            }
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param $rows
-     * @param $colMeta
-     *
-     * @return mixed
-     */
-    protected function castValues($rows, $colMeta)
+    protected function castValues(array $rows, $colMeta): array
     {
         foreach ($rows as $numRow => $row) {
             foreach ($colMeta as $meta) {
@@ -100,7 +78,29 @@ class PDOClient
      *
      * @return array
      */
-    public function select(string $query, ?array $params = [])
+    public function query(string $query, ?array $params = []): array
+    {
+        $result = [];
+        if ($stm = $this->dbh->prepare($query)) {
+            if ($stm->execute($params)) {
+                $result['data'] = $stm->fetchAll(\PDO::FETCH_ASSOC);
+                $result['count'] = $stm->rowCount();
+            }
+            else {
+                $this->error($query, $stm->errorInfo());
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param string $query
+     * @param array|null $params
+     *
+     * @return array
+     */
+    public function select(string $query, ?array $params = []): array
     {
         $result = [];
         if ($stm = $this->dbh->prepare($query)) {

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace avadim\Manticore\QueryBuilder;
 
-use avadim\Manticore\QueryBuilder\Schema\SchemaIndex;
+use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
 use avadim\Manticore\QueryBuilder\ResultSet;
 
 class Builder
@@ -81,13 +81,15 @@ class Builder
     }
 
     /**
+     * Alias for table()
+     *
      * @param string $name
      *
      * @return Query
      */
     public static function index(string $name): Query
     {
-        return self::connection()->index($name);
+        return self::connection()->table($name);
     }
 
     /**
@@ -102,7 +104,7 @@ class Builder
 
     /**
      * @param string $name
-     * @param array|SchemaIndex|callable $schema
+     * @param array|SchemaTable|callable $schema
      *
      * @return ResultSet
      */

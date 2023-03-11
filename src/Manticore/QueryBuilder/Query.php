@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace avadim\Manticore\QueryBuilder;
 
 use avadim\Manticore\QueryBuilder\Client\PDOClient;
-use avadim\Manticore\QueryBuilder\Schema\SchemaIndex;
+use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
 
 class Query
 {
     private array $config;
-    private ?array $index;
+    private ?array $table;
     private string $prefix;
     private bool $forcePrefix = false;
 
@@ -19,7 +19,7 @@ class Query
     private Parser $parser;
     private array $indexPool = [];
 
-    private SchemaIndex $schema;
+    private SchemaTable $schema;
 
     private ?string $sql = null;
     private ?string $command = null;
@@ -33,15 +33,16 @@ class Query
     private array $options = [];
     private array $facets = [];
     private array $highlight = [];
+    private array $params = [];
 
     private QueryConditionSet $conditions;
 
     /**
      * @param array $config
-     * @param string|null $indexName
+     * @param string|null $tableName
      * @param $logger
      */
-    public function __construct(array $config, ?string $indexName = null, $logger = null)
+    public function __construct(array $config, ?string $tableName = null, $logger = null)
     {
         $this->config = $config;
         $this->prefix = $config['prefix'] ?? '';
@@ -49,7 +50,7 @@ class Query
             $this->forcePrefix = true;
         }
         $this->parser = new Parser($this->prefix);
-        $this->schema = new SchemaIndex();
+        $this->schema = new SchemaTable();
         if ($logger) {
             $this->setLogger($logger);
         }
@@ -62,8 +63,8 @@ class Query
         }
 
         $this->conditions = new QueryConditionSet();
-        if ($indexName) {
-            $this->index($indexName);
+        if ($tableName) {
+            $this->table($tableName);
         }
     }
 
@@ -92,7 +93,7 @@ class Query
 
         $query = [
             'command' => $this->command,
-            'index' => $this->_sqlIndex(),
+            'table' => $this->_sqlTable(),
             'query' => $this->_makeSql(),
             'original' => null,
         ];
@@ -197,22 +198,22 @@ class Query
      */
     protected function _execQuery(array $parsedSql): array
     {
-        $index = $this->_sqlIndex();
-        if (!$index && !empty($parsedSql['index'])) {
-            $this->index($parsedSql['index']);
+        $index = $this->_sqlTable();
+        if (!$index && !empty($parsedSql['table'])) {
+            $this->table($parsedSql['table']);
         }
 
         $time = microtime(true);
         if ($parsedSql['command'] === 'INSERT') {
-            $response = $this->client->insert($parsedSql['query']);
+            $response = $this->client->insert($parsedSql['query'], $this->params);
         }
         elseif ($parsedSql['command'] === 'SELECT') {
             $query = 'SELECT id as _id, weight() as _score, ' . substr($parsedSql['query'], 6);
             //$query = $parsedSql['query'];
-            $response = $this->client->select($query);
+            $response = $this->client->select($query, $this->params);
         }
         else {
-            $response = $this->client->query($parsedSql['query']);
+            $response = $this->client->query($parsedSql['query'], $this->params);
         }
         $time = microtime(true) - $time;
 
@@ -228,6 +229,7 @@ class Query
                 foreach ($index as $key => $val) {
                     $data[$n][$key] = $val;
                     if ($key === 'Index') {
+                        $data[$n]['Table'] = $val;
                         if ($this->prefix && strpos($val, $this->prefix) === 0) {
                             $name = '?' . substr($val, strlen($this->prefix));
                         } else {
@@ -258,9 +260,20 @@ class Query
             if (!empty($parsedSql['facets']) && $response['data']) {
                 $result['facets'] = [];
                 foreach ($parsedSql['facets'] as $n => $desc) {
+                    if (isset($response['data'][$n + 1])) {
+                        $data = $this->_castResult($response['data'][$n + 1]);
+                        foreach ($data as $dataKey => $dataSet) {
+                            if (isset($dataSet['count(*)'])) {
+                                $data[$dataKey]['_count'] = $dataSet['count(*)'];
+                            }
+                        }
+                    }
+                    else {
+                        $data = [];
+                    }
                     $result['facets'][] = [
                         'desc' => $desc,
-                        'data' => isset($response['data'][$n + 1]) ? $this->_castResult($response['data'][$n + 1]) : [],
+                        'data' => $data,
                     ];
                 }
             }
@@ -335,31 +348,28 @@ class Query
      *
      * @return string
      */
-    protected function resolveIndexName(string $name): string
+    protected function resolveTableName(string $name): string
     {
-        $name = trim($name);
-        if (strpos($name, '?') !== false) {
-            if ($name[0] === '?') {
-                $name = $this->prefix . substr($name, 1);
-            }
-            elseif ($name[0] === $name[-1] && substr($name, 0, 2) === '`?') {
-                $name = $name[0] . $this->prefix . substr($name, 2, -1) . $name[0];
-            }
-        }
-        elseif ($this->prefix && $this->forcePrefix) {
-            if ($name[0] === '`' && $name[0] === $name[-1] && substr($name, 0, 2) === '`?') {
-                $name = $name[0] . $this->prefix . substr($name, 1, -1) . $name[0];
-            }
-            else {
-                $name = $this->prefix . $name;
-            }
-        }
 
-        return $name;
+        return Parser::resolveTableName($name, $this->prefix, $this->forcePrefix);
     }
 
     /**
-     * Set index name
+     * Set table name
+     *
+     * @param string $name
+     *
+     * @return $this
+     */
+    public function table(string $name): Query
+    {
+        $this->table = ['real_name' => Parser::resolveTableName($name, $this->prefix, $this->forcePrefix)];
+
+        return $this;
+    }
+
+    /**
+     * Alias of table()
      *
      * @param string $name
      *
@@ -367,19 +377,7 @@ class Query
      */
     public function index(string $name): Query
     {
-        $this->index = ['real_name' => Parser::resolveIndexName($name, $this->prefix, $this->forcePrefix)];
-
-        return $this;
-    }
-
-    /**
-     * @param string $name
-     *
-     * @return $this
-     */
-    public function table(string $name): Query
-    {
-        return $this->index($name);
+        return $this->table($name);
     }
 
     /**
@@ -393,16 +391,6 @@ class Query
         $this->match = $match;
 
         return $this;
-    }
-
-    /**
-     * @param $match
-     *
-     * @return $this
-     */
-    public function whereMatch($match): Query
-    {
-        return $this->match($match);
     }
 
     // +++ OPTIONS +++ //
@@ -450,7 +438,8 @@ class Query
     {
         if (isset($this->options['field_weights'][$field]) && $weight === null) {
             unset($this->options['field_weights'][$field]);
-        } else {
+        }
+        else {
             $this->options['field_weights'][$field] = $weight;
         }
 
@@ -476,7 +465,8 @@ class Query
                 }
                 $this->fieldWeight($field, $weight);
             }
-        } else {
+        }
+        else {
             foreach ($value as $field => $weight) {
                 $this->fieldWeight($field, $weight);
             }
@@ -831,9 +821,9 @@ class Query
     /**
      * @return string|null
      */
-    protected function _sqlIndex(): ?string
+    protected function _sqlTable(): ?string
     {
-        return $this->index['real_name'] ?? '';
+        return $this->table['real_name'] ?? '';
     }
 
     /**
@@ -943,13 +933,13 @@ class Query
     {
         if ($this->command === 'SELECT' || $this->command === 'UPDATE' || $this->command === 'DELETE') {
             if ($this->command === 'SELECT') {
-                $sql = 'SELECT ' . $this->_sqlSelectColumns() . ' FROM ' . $this->_sqlIndex();
+                $sql = 'SELECT ' . $this->_sqlSelectColumns() . ' FROM ' . $this->_sqlTable();
             }
             elseif ($this->command === 'UPDATE') {
-                $sql = 'UPDATE ' . $this->_sqlIndex() . ' SET ' . $this->_sqlUpdateColumns();
+                $sql = 'UPDATE ' . $this->_sqlTable() . ' SET ' . $this->_sqlUpdateColumns();
             }
             else {
-                $sql = 'DELETE FROM ' . $this->_sqlIndex();
+                $sql = 'DELETE FROM ' . $this->_sqlTable();
             }
 
             $match = $this->_sqlMatch();
@@ -986,15 +976,19 @@ class Query
                 $columns[] = $col;
                 $values[] = Parser::formatValue($val, $types[$col] ?? null);
             }
-            $sql = $this->command . ' INTO ' . $this->_sqlIndex() . '(' . implode(',', $columns) . ') VALUES('. implode(',', $values) . ')';
+            $sql = $this->command . ' INTO ' . $this->_sqlTable() . '(' . implode(',', $columns) . ') VALUES('. implode(',', $values) . ')';
         }
 
         elseif ($this->command === 'CREATE') {
-            $sql = 'CREATE TABLE ' . $this->_sqlIndex() . '(' . $this->_sqlSchemaColumns() . ')';
-            if (!empty($this->index['engine'])) {
-                $sql .= ' engine=\'' . $this->index['engine'] . '\'';
+            $sql = 'CREATE TABLE ' . $this->_sqlTable() . '(' . $this->_sqlSchemaColumns() . ')';
+            if (!empty($this->schema->engine)) {
+                $sql .= ' engine=\'' . $this->schema->engine . '\'';
+            }
+            elseif (!empty($this->table['engine'])) {
+                $sql .= ' engine=\'' . $this->table['engine'] . '\'';
             }
         }
+
         else {
             $sql = '';
         }
@@ -1040,8 +1034,8 @@ class Query
      */
     public function schema($schema): Query
     {
-        $this->schema = new SchemaIndex();
-        if ($schema instanceof SchemaIndex) {
+        $this->schema = new SchemaTable();
+        if ($schema instanceof SchemaTable) {
             $this->schema = $schema;
         }
         elseif (is_callable($schema)) {
@@ -1076,7 +1070,7 @@ class Query
      */
     public function engine(string $engine): Query
     {
-        $this->index['engine'] = $engine;
+        $this->table['engine'] = $engine;
 
         return $this;
     }
@@ -1173,6 +1167,18 @@ class Query
     }
 
     /**
+     * @param array $params
+     *
+     * @return $this
+     */
+    public function bind(array $params): Query
+    {
+        $this->params = $params;
+
+        return $this;
+    }
+
+    /**
      * @return ResultSet
      */
     public function exec(): ResultSet
@@ -1197,7 +1203,7 @@ class Query
         ];
 
         $params = [
-            'index' => $this->_sqlIndex(),
+            'table' => $this->_sqlTable(),
             'body' => [
                 'query' => $this->_sqlMatch(),
             ],
@@ -1222,20 +1228,20 @@ class Query
     }
 
     /**
-     * create('index', [..])
-     * create('index', function(SchemaIndex $index) {..})
-     * index('index')->create([..])
-     * index('index')->create(function(SchemaIndex $index) {..})
+     * create('tableName', [..])
+     * create('tableName', function(SchemaTable $table) {..})
+     * table('tableName')->create([..])
+     * table('tableName')->create(function(SchemaTable $table) {..})
      *
-     * @param string|array|SchemaIndex|callable $name
-     * @param array|SchemaIndex|callable|null $schema
+     * @param string|array|SchemaTable|callable $name
+     * @param array|SchemaTable|callable|null $schema
      *
      * @return ResultSet
      */
     public function create($name, $schema = null): ResultSet
     {
         if (func_num_args() === 2 && is_string($name) && $schema) {
-            $this->index($name);
+            $this->table($name);
         }
         elseif (func_num_args() === 1) {
             $schema = $name;
@@ -1282,7 +1288,7 @@ class Query
     public function truncate(?bool $reconfigure = false): ResultSet
     {
         $this->command = 'TRUNCATE';
-        $sql = 'TRUNCATE TABLE ' . $this->_sqlIndex() . (!empty($reconfigure) ? ' WITH RECONFIGURE' : '');
+        $sql = 'TRUNCATE TABLE ' . $this->_sqlTable() . (!empty($reconfigure) ? ' WITH RECONFIGURE' : '');
         $request = [
             'command' => $this->command,
             'query' => $sql,
@@ -1303,7 +1309,7 @@ class Query
     public function drop(?bool $ifExists = false): ResultSet
     {
         $this->command = 'DROP';
-        $sql = 'DROP TABLE ' . (!empty($ifExists) ? 'IF EXISTS ' : '') . $this->_sqlIndex();
+        $sql = 'DROP TABLE ' . (!empty($ifExists) ? 'IF EXISTS ' : '') . $this->_sqlTable();
         $request = [
             'command' => $this->command,
             'query' => $sql,
@@ -1332,7 +1338,7 @@ class Query
         $this->command = 'SHOW TABLES';
         $sql = 'SHOW TABLES';
         if ($pattern) {
-            $sql .= ' LIKE \'' . Parser::resolveIndexName($pattern, $this->prefix, $this->forcePrefix) . '\'';
+            $sql .= ' LIKE \'' . Parser::resolveTableName($pattern, $this->prefix, $this->forcePrefix) . '\'';
         }
         elseif ($this->forcePrefix && $pattern !== '' && $pattern !== '%') {
             $sql .= ' LIKE \'' . $this->prefix . '%\'';
@@ -1377,7 +1383,7 @@ class Query
      */
     public function describe(): ResultSet
     {
-        $sql = 'DESCRIBE ' . $this->_sqlIndex();
+        $sql = 'DESCRIBE ' . $this->_sqlTable();
         $response = $this->client->query($sql);
         $result = [
             'command' => 'DESCRIBE',
@@ -1397,20 +1403,20 @@ class Query
      */
     public function columnTypes(): array
     {
-        $indexName = $this->_sqlIndex();
-        if (empty($this->indexPool[$indexName]['columnsType'])) {
+        $tableName = $this->_sqlTable();
+        if (empty($this->indexPool[$tableName]['columnsType'])) {
             $types = [];
-            if (empty($this->indexPool[$indexName]['describe'])) {
-                $this->indexPool[$indexName]['describe'] = $this->describe();
+            if (empty($this->indexPool[$tableName]['describe'])) {
+                $this->indexPool[$tableName]['describe'] = $this->describe();
             }
-            $info = $this->indexPool[$indexName]['describe'];
+            $info = $this->indexPool[$tableName]['describe'];
             foreach ($info->result() as $row) {
                 $types[$row['Field']] = $row['Type'];
             }
-            $this->indexPool[$indexName]['columnsType'] = $types;
+            $this->indexPool[$tableName]['columnsType'] = $types;
         }
 
-        return $this->indexPool[$indexName]['columnsType'];
+        return $this->indexPool[$tableName]['columnsType'];
     }
 
     /**
@@ -1421,7 +1427,7 @@ class Query
     public function optimize(bool $sync = false): ResultSet
     {
         $this->command = 'OPTIMIZE';
-        $sql = 'OPTIMIZE INDEX ' . $this->_sqlIndex();
+        $sql = 'OPTIMIZE INDEX ' . $this->_sqlTable();
         if ($sync) {
             $sql .= ' OPTION sync=1';
         }
@@ -1555,7 +1561,7 @@ class Query
      */
     public function status(): ResultSet
     {
-        $sql = 'SHOW INDEX ' . $this->_sqlIndex() . ' STATUS';
+        $sql = 'SHOW INDEX ' . $this->_sqlTable() . ' STATUS';
         $response = $this->client->query($sql);
         $result = [
             'command' => 'STATUS',
@@ -1575,7 +1581,7 @@ class Query
      */
     public function settings(): ResultSet
     {
-        $sql = 'SHOW INDEX ' . $this->_sqlIndex() . ' SETTINGS';
+        $sql = 'SHOW INDEX ' . $this->_sqlTable() . ' SETTINGS';
         $response = $this->client->query($sql);
         $result = [
             'command' => 'SETTINGS',

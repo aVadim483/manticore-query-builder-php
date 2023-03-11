@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace avadim\Manticore\QueryBuilder\Schema;
 
-class SchemaIndex
+class SchemaTable
 {
+    public string $engine = '';
+
     private array $columns = [];
 
 
@@ -30,6 +32,14 @@ class SchemaIndex
      */
     public function addColumn(string $name, $type, $options = null): SchemaColumn
     {
+        if (!$options) {
+            $options = [];
+        }
+        if (is_string($type) && strpos($type, ' ')) {
+            $addOptions = explode(' ', $type);
+            $type = array_shift($addOptions);
+            $options = array_replace_recursive($addOptions, (array)$options);
+        }
         $this->columns[$name] = SchemaColumn::define($name, $type, $options);
 
         return $this->columns[$name];
@@ -48,9 +58,9 @@ class SchemaIndex
         return implode(', ', $columns);
     }
 
-    public function indexEngine()
+    public function tableEngine($engine)
     {
-
+        $this->engine = $engine;
     }
 
     /**

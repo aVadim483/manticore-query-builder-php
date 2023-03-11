@@ -34,7 +34,7 @@ class SchemaColumn
             unset($options['engine']);
         }
         if (isset($options['fast_fetch'])) {
-            $this->fastFetch($options['fast_fetch']);
+            $this->fastFetch((string)((int)$options['fast_fetch']));
             unset($options['fast_fetch']);
         }
         $this->options = $options;
@@ -133,7 +133,7 @@ class SchemaColumn
         if ($this->engine) {
             $column .= ' engine=\'' . $this->engine . '\'';
         }
-        if ($this->fastFetch) {
+        if ($this->fastFetch !== null) {
             $column .= ' fast_fetch=\'' . $this->fastFetch . '\'';
         }
         foreach ($this->options as $key => $val) {

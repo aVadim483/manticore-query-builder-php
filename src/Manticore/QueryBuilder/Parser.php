@@ -55,6 +55,12 @@ class Parser
             'query' => '',
         ];
 
+        if (!preg_match('#\?w+#', $query)) {
+            $result['query'] = $query;
+
+            return $result;
+        }
+
         switch ($command) {
             case 'SELECT':
                 $parts = [];
@@ -67,11 +73,12 @@ class Parser
                         $sub = $this->parseSql(substr($exp1, 1, -1));
                         $result['query'] .= ' ' . $exp1[0] . $sub['query'] . $exp1[-1];
                         preg_match('#^((WHERE)\s+(?P<where>.+))?(\s+(GROUP\s+BY)\s+(?P<group>.+))?(\s+(ORDER\s+BY)\s+(?P<order>.+))?(\s+(LIMIT)\s+(?P<limit>.+))?(\s+(OPTION)\s+(?P<option>.+))?$#siU', $exp2, $mp);
+                        $exp1 = null;
                     }
                     else {
                         if (preg_match('#^(?P<tables>[\w\.\?]+)(\s+(WHERE)\s+(?P<where>.+))?(\s+(GROUP\s+BY)\s+(?P<group>.+))?(\s+(ORDER\s+ BY)\s+(?P<order>.+))?(\s+(LIMIT)\s+(?P<limit>.+))?(\s+(OPTION)\s+(?P<option>.+))?$#siU', $exp1, $mp)) {
-                            $result['index'] = $this->_formatTables($mp['tables']);
-                            $parts[] = $result['index'];
+                            $result['table'] = $this->_formatTables($mp['tables']);
+                            $parts[] = $result['table'];
                         }
                     }
 
@@ -101,23 +108,26 @@ class Parser
                     // unknown
                 }
                 if (!empty($mp['where'])) {
-                    $parts[] ='WHERE';
+                    $parts[] = 'WHERE';
                     $parts[] = $this->_formatWhereParams($mp['where']);
                 }
+                elseif (!empty($exp1)) {
+                    $parts[] = $exp1;
+                }
                 if (!empty($mp['group'])) {
-                    $parts[] ='GROUP BY';
+                    $parts[] = 'GROUP BY';
                     $parts[] = $this->_formatGroupParams($mp['group']);
                 }
                 if (!empty($mp['order'])) {
-                    $parts[] ='ORDER BY';
+                    $parts[] = 'ORDER BY';
                     $parts[] = $this->_formatOrderParams($mp['order']);
                 }
                 if (!empty($mp['limit'])) {
-                    $parts[] ='LIMIT';
+                    $parts[] = 'LIMIT';
                     $parts[] = $this->_formatLimitParams($mp['limit']);
                 }
                 if (!empty($mp['option'])) {
-                    $parts[] ='OPTION';
+                    $parts[] = 'OPTION';
                     $parts[] = $this->_formatOptionParams($mp['option']);
                 }
                 if (!empty($mp['facet'])) {
@@ -130,8 +140,8 @@ class Parser
 
             case 'INSERT':
                 if (preg_match('#^INSERT\s+INTO\s+(?P<tables>[\w.?]+(\s+(AS\s+)?[\w.]+)?\s*)\((?P<fields>.+)\)\s+VALUES([\s\(]+)(?P<values>.+)$#si', $query, $m)) {
-                    $result['index'] = $this->_formatTables($m['tables']);
-                    $result['query'] = 'INSERT INTO ' . $result['index'] . '(' . $this->_formatFields($m['fields']) . ') VALUES (' . trim($m['values']);
+                    $result['table'] = $this->_formatTables($m['tables']);
+                    $result['query'] = 'INSERT INTO ' . $result['table'] . '(' . $this->_formatFields($m['fields']) . ') VALUES (' . trim($m['values']);
                 }
                 break;
 
@@ -286,7 +296,7 @@ class Parser
      */
     protected function _tableName(string $name): string
     {
-        return self::resolveIndexName($name, $this->prefix);
+        return self::resolveTableName($name, $this->prefix);
     }
 
     /**
@@ -443,7 +453,7 @@ class Parser
      *
      * @return string
      */
-    public static function resolveIndexName(string $name, ?string $prefix = '', ?bool $forcePrefix = false): string
+    public static function resolveTableName(string $name, ?string $prefix = '', ?bool $forcePrefix = false): string
     {
         $name = trim($name);
         if (strpos($name, '?') !== false) {

@@ -37,12 +37,12 @@ class QueryCondition
     /**
      * @param $bool
      * @param $field
-     * @param $arg1
-     * @param null $arg2
+     * @param mixed|null $arg1
+     * @param mixed|null $arg2
      *
      * @return QueryCondition|QueryConditionSet
      */
-    public static function create($bool, $field, $arg1, $arg2 = null)
+    public static function create($bool, $field, $arg1 = null, $arg2 = null)
     {
         if (is_callable($field)) {
             $condition = new QueryConditionSet($bool);
