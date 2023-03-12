@@ -137,9 +137,10 @@ class PDOClient
         $result = [];
         if ($stm = $this->dbh->prepare($query)) {
             if ($stm->execute($params)) {
-                $id = $this->dbh->lastInsertId();
-                if ($id) {
-                    $result['data'] = (int)$id;
+                $stm = $this->dbh->query('SELECT LAST_INSERT_ID()');
+                if ($stm && ($rows = $stm->fetch()) && !empty($rows[0])) {
+                    $id = array_map('intval', explode(',', $rows[0]));
+                    $result['data'] = (count($id) === 1) ? reset($id) : $id;
                 }
             }
             else {

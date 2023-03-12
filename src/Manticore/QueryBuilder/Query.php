@@ -983,11 +983,36 @@ class Query
         elseif ($this->command === 'INSERT' || $this->command === 'REPLACE') {
             $columns = $values = [];
             $types = $this->columnTypes();
-            foreach ($this->update as $col => $val) {
-                $columns[] = $col;
-                $values[] = Parser::formatValue($val, $types[$col] ?? null);
+            // single or multiple insert/replace
+            if (is_numeric($firstKey = array_key_first($this->update)) && is_array($this->update[$firstKey])) {
+                // $this->update has [][] -- multiple operation
+                foreach ($this->update as $row) {
+                    foreach($row as $col => $val) {
+                        if (!in_array($col, $columns)) {
+                            $columns[] = $col;
+                        }
+                    }
+                }
+                foreach ($this->update as $numRow => $row) {
+                    foreach($columns as $col) {
+                        $values[$numRow][] = Parser::formatValue($row[$col] ?? null, $types[$col] ?? null);
+                    }
+                }
+                $sql = $this->command . ' INTO ' . $this->_sqlTable() . '(' . implode(',', $columns) . ') VALUES ';
+                $sqlValues = [];
+                foreach ($values as $rowValues) {
+                    $sqlValues[] = '(' . implode(',', $rowValues) . ')';
+                }
+                $sql .= implode(',', $sqlValues);
             }
-            $sql = $this->command . ' INTO ' . $this->_sqlTable() . '(' . implode(',', $columns) . ') VALUES('. implode(',', $values) . ')';
+            else {
+                // $this->update has [] -- single record
+                foreach ($this->update as $col => $val) {
+                    $columns[] = $col;
+                    $values[] = Parser::formatValue($val, $types[$col] ?? null);
+                }
+                $sql = $this->command . ' INTO ' . $this->_sqlTable() . '(' . implode(',', $columns) . ') VALUES('. implode(',', $values) . ')';
+            }
         }
 
         elseif ($this->command === 'CREATE') {

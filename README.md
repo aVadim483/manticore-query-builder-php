@@ -7,6 +7,7 @@ Features
 * Placeholders as prefix in table names
 * Named parameters in expressions
 * Clear Laravel-like syntax
+* Multiple INSERT and REPLACE
 * Support MATCH() and multi-level WHERE for SELECT
 * Support faceted search
 
@@ -38,7 +39,7 @@ $config = [
 ManticoreDb::init($config);
 
 // Create table
-ManticoreDb::create('products', function (SchemaTable $table) {
+ManticoreDb::create('?products', function (SchemaTable $table) {
     $table->timestamp('created_at');
     $table->string('manufacturer'); 
     $table->text('title'); 
@@ -48,8 +49,8 @@ ManticoreDb::create('products', function (SchemaTable $table) {
     $table->bool('on_sale'); 
 });
 
-// Insert row
-$insertRow = [
+// Insert single row
+$singleRow = [
     'created_at' => time(),
     'manufacturer' => 'Samsung',
     'title' => 'Galaxy S23 Ultra',
@@ -58,10 +59,30 @@ $insertRow = [
     'categories' => [5, 7, 11],
     'on_sale' => true,
 ];
-$res = ManticoreDb::table('?products')->insert($insertSet);
+$res = ManticoreDb::table('?products')->insert($singleRow);
 // $res->result() => <id> of the new record
 
-$rows = ManticoreDb::table('articles')->match('galaxy')->where('price', '>', 1100)->get();
+// Insert multiple rows
+$multipleRows = [
+    [
+        'created_at' => time(),
+        'manufacturer' => '...',
+        'title' => '...',
+        'info' => [],
+        // ...
+    ],
+    [
+        'created_at' => time(),
+        'manufacturer' => '...',
+        'title' => '...',
+        'info' => [],
+        // ...
+    ],
+];
+$res = ManticoreDb::table('?products')->insert($multipleRows);
+// $res->result() => array of <id> of new records
+
+$rows = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get();
 ```
 
 More detail documentation is available in [docs](/docs/README.md) folder.

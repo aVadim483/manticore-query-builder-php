@@ -77,7 +77,7 @@ final class ManticoreQueryBuilderTest extends TestCase
         // default connection "test1"
         $res = ManticoreDb::showTables('?%');
         $found = 0;
-        foreach ($res->result() as $row) {
+        foreach ($res as $row) {
             if ($row['Index'] === $prefix1 . 'products' && $row['Name'] === '?products') {
                 $found = 1;
                 break;
@@ -88,7 +88,7 @@ final class ManticoreQueryBuilderTest extends TestCase
         // connection "test2"
         $res = ManticoreDb::connection('test2')->showTables('?%');
         $found = 0;
-        foreach ($res->result() as $row) {
+        foreach ($res as $row) {
             if ($row['Index'] === $prefix2 . 'products' && $row['Name'] === '?products') {
                 $found = 1;
                 break;
