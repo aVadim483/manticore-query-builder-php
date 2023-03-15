@@ -131,7 +131,7 @@ class Query
         $types = $this->columnTypes();
         $result = [];
         foreach ($rows as $num => $row) {
-            $resNum = $row['_id'] ?: $num;
+            $resNum = $row['_id'] ?: ($row['id'] ?: $num);
             foreach ($row as $col => $val) {
                 if (isset($types[$col])) {
                     switch ($types[$col]) {

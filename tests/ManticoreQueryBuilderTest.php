@@ -196,7 +196,7 @@ final class ManticoreQueryBuilderTest extends TestCase
         $result = ManticoreDb::table($table)->where('regex(metadata.cpu.model, \'Kyro*\')')->count();
         $this->assertEquals(1, $result);
 
-        $result = ManticoreDb::table('testjson')->select(['name', 'ANY(x.stock > 0 AND GEODIST(23.0,46.5, DOUBLE(x.lat), DOUBLE(x.long), {out=mi}) < 10 FOR x IN metadata.locations) AS close_to_you'])->get();
+        $result = ManticoreDb::table($table)->select(['name', 'ANY(x.stock > 0 AND GEODIST(23.0,46.5, DOUBLE(x.lat), DOUBLE(x.long), {out=mi}) < 10 FOR x IN metadata.locations) AS close_to_you'])->get();
         $rec = reset($result);
         $this->assertEquals(1, $rec['close_to_you']);
         $rec = next($result);
@@ -215,6 +215,9 @@ final class ManticoreQueryBuilderTest extends TestCase
         $this->assertEquals(1, $result[0]['c']);
         $this->assertEquals('2016', $result[1]['g']);
         $this->assertEquals(2, $result[1]['c']);
+
+        $result = ManticoreDb::table($table)->select(['*', 'IN(metadata.color, :black, :white) as color_filter'])->where('color_filter=1')->bind([':black' => 'black', ':white' => 'white'])->get();
+        $this->assertCount(3, $result);
 
         ManticoreDb::table($table)->drop();
     }
