@@ -50,38 +50,43 @@ class QueryCondition
 
             return $condition;
         }
-        if ($arg2 === null) {
-            $arg2 = $arg1;
-            $arg1 = '=';
-        }
-        $op = strtoupper($arg1);
-        if (is_array($arg2)) {
-            $arg = array_map([self::class, '_escape_string'], $arg2);
-        }
-        else {
-            $arg = self::_escape_string($arg2);
-        }
+        if ($arg1 !== null) {
+            if ($arg2 === null) {
+                $arg2 = $arg1;
+                $arg1 = '=';
+            }
+            $op = strtoupper($arg1);
+            if (is_array($arg2)) {
+                $arg = array_map([self::class, '_escape_string'], $arg2);
+            }
+            else {
+                $arg = self::_escape_string($arg2);
+            }
 
-        if ($op === 'IN') {
-            $condition = new self($bool, $field, 'IN', '(' . implode(',', (array)$arg) . ')');
-        }
-        elseif ($op === 'NOT IN') {
-            $condition = new self($bool, $field, 'NOT IN', '(' . implode(',', (array)$arg) . ')');
-        }
-        elseif ($op === 'BETWEEN') {
-            $condition = new self($bool, $field, 'BETWEEN', $arg[0] . ' AND ' . $arg[1]);
-        }
-        elseif ($op === 'NOT BETWEEN') {
-            $condition = new self($bool, $field, 'NOT BETWEEN', $arg[0] . ' AND ' . $arg[1]);
-        }
-        elseif ($op === 'IS NULL') {
-            $condition = new self($bool, $field, 'IS NULL');
-        }
-        elseif ($op === 'IS NOT NULL') {
-            $condition = new self($bool, $field, 'IS NOT NULL');
+            if ($op === 'IN') {
+                $condition = new self($bool, $field, 'IN', '(' . implode(',', (array)$arg) . ')');
+            }
+            elseif ($op === 'NOT IN') {
+                $condition = new self($bool, $field, 'NOT IN', '(' . implode(',', (array)$arg) . ')');
+            }
+            elseif ($op === 'BETWEEN') {
+                $condition = new self($bool, $field, 'BETWEEN', $arg[0] . ' AND ' . $arg[1]);
+            }
+            elseif ($op === 'NOT BETWEEN') {
+                $condition = new self($bool, $field, 'NOT BETWEEN', $arg[0] . ' AND ' . $arg[1]);
+            }
+            elseif ($op === 'IS NULL') {
+                $condition = new self($bool, $field, 'IS NULL');
+            }
+            elseif ($op === 'IS NOT NULL') {
+                $condition = new self($bool, $field, 'IS NOT NULL');
+            }
+            else {
+                $condition = new self($bool, $field, $op, $arg);
+            }
         }
         else {
-            $condition = new self($bool, $field, $op, $arg);
+            $condition = new self($bool, $field, null, null);
         }
 
         return $condition;

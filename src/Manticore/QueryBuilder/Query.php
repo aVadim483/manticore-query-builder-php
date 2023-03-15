@@ -28,7 +28,9 @@ class Query
     private array $update = [];
 
     private ?string $match = null;
-    private array $orders = [];
+    private array $group = [];
+    private array $having = [];
+    private array $order = [];
     private array $limit = [];
     private array $options = [];
     private array $facets = [];
@@ -213,8 +215,12 @@ class Query
             $response = $this->client->insert($parsedSql['query'], $this->params);
         }
         elseif ($parsedSql['command'] === 'SELECT') {
-            $query = 'SELECT id as _id, weight() as _score, ' . substr($parsedSql['query'], 6);
-            //$query = $parsedSql['query'];
+            if (!$this->select) {
+                $query = 'SELECT id as _id, weight() as _score, ' . substr($parsedSql['query'], 6);
+            }
+            else {
+                $query = $parsedSql['query'];
+            }
             $response = $this->client->select($query, $this->params);
         }
         else {
@@ -873,13 +879,31 @@ class Query
         return '';
     }
 
+    protected function _sqlGroup(): string
+    {
+        if ($this->group) {
+            return implode(',', $this->group);
+        }
+
+        return '';
+    }
+
+    protected function _sqlHaving(): string
+    {
+        if ($this->having) {
+            return implode(',', $this->having);
+        }
+
+        return '';
+    }
+
     /**
      * @return string
      */
-    protected function _sqlOrders(): string
+    protected function _sqlOrder(): string
     {
-        if ($this->orders) {
-            return implode(',', $this->orders);
+        if ($this->order) {
+            return implode(',', $this->order);
         }
 
         return '';
@@ -966,7 +990,13 @@ class Query
                     $sql .= ' WHERE' . $where;
                 }
             }
-            if ($orders = $this->_sqlOrders()) {
+            if ($group = $this->_sqlGroup()) {
+                $sql .= ' GROUP BY ' . $group;
+            }
+            if ($having = $this->_sqlHaving()) {
+                $sql .= ' HAVING ' . $having;
+            }
+            if ($orders = $this->_sqlOrder()) {
                 $sql .= ' ORDER BY ' . $orders;
             }
             if ($limit = $this->_sqlLimit()) {
@@ -1136,9 +1166,33 @@ class Query
      *
      * @return $this
      */
+    public function groupBy(string $names): Query
+    {
+        $this->group[] = $names;
+
+        return $this;
+    }
+
+    /**
+     * @param string $names
+     *
+     * @return $this
+     */
+    public function having(string $names): Query
+    {
+        $this->having[] = $names;
+
+        return $this;
+    }
+
+    /**
+     * @param string $names
+     *
+     * @return $this
+     */
     public function orderBy(string $names): Query
     {
-        $this->orders[] = $names . ' ASC';
+        $this->order[] = $names . ' ASC';
 
         return $this;
     }
@@ -1150,7 +1204,7 @@ class Query
      */
     public function orderByDesc(string $names): Query
     {
-        $this->orders[] = $names . ' DESC';
+        $this->order[] = $names . ' DESC';
 
         return $this;
     }
@@ -1531,6 +1585,20 @@ class Query
         }
 
         return $this->exec()->result();
+    }
+
+    /**
+     * @return int
+     */
+    public function count(): int
+    {
+        $this->selectColumns('COUNT(*) as _count');
+        $result = $this->exec()->result();
+        if ($result && ($arr = reset($result))) {
+            return $arr['_count'] ?? 0;
+        }
+
+        return 0;
     }
 
     /**
