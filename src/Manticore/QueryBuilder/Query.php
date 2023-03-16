@@ -81,6 +81,38 @@ class Query
     }
 
     /**
+     * @param mixed $param
+     *
+     * @return string
+     */
+    public static function escapeParam($param): string
+    {
+
+        return is_string($param) ? addslashes($param) : $param;
+    }
+
+    public static function quoteParam($param): string
+    {
+        if (is_numeric($param)) {
+            $result = (string)$param;
+            if (is_float($param)) {
+                $result = str_replace(',', '.', $result);
+            }
+        }
+        elseif (is_bool($param)) {
+            $result = ($param ? '1' : '0');
+        }
+        elseif (preg_match('#^:\w+$#', $param)) {
+            $result = $param;
+        }
+        else {
+            $result = '\'' . self::escapeParam($param) . '\'';
+        }
+
+        return $result;
+    }
+
+    /**
      * @return array
      */
     public function parse(): array
@@ -90,6 +122,7 @@ class Query
             if (!empty($query['command'])) {
                 $this->command = $query['command'];
             }
+            $query['params'] = $this->params ?: [];
 
             return $query;
         }
@@ -103,6 +136,7 @@ class Query
             'table' => $this->_sqlTable(),
             'query' => $this->_makeSql(),
             'original' => null,
+            'params' => $this->params ?: [],
         ];
         if (!empty($this->facets)) {
             $query['facets'] = $this->facets;
@@ -112,11 +146,21 @@ class Query
     }
 
     /**
+     * @param bool|null $substParams
      * @return string
      */
-    public function toSql(): string
+    public function toSql(?bool $substParams = false): string
     {
         $querySet = $this->parse();
+        if (!empty($querySet['params'])) {
+            $subst = [];
+            foreach ($querySet['params'] as $key => $val) {
+                //$subst[$key] = self::quoteParam($val);
+                $subst[$key] = $val;
+            }
+
+            return str_replace(array_keys($subst), array_values($subst), $querySet['query']);
+        }
 
         return $querySet['query'];
     }
@@ -778,7 +822,7 @@ class Query
     protected function _sqlSelectColumns(): string
     {
         if ($this->select) {
-            $result = implode(', ', array_map('addslashes', $this->select));
+            $result = implode(', ', array_map([self::class, 'escapeParam'], $this->select));
         }
         else {
             $result = '*';
@@ -789,12 +833,7 @@ class Query
             if (!empty($this->highlight['options'])) {
                 $options = [];
                 foreach ($this->highlight['options'] as $key => $val) {
-                    if (is_numeric($val)) {
-                        $options[] = $key . '=' . addslashes($val);
-                    }
-                    else {
-                        $options[] = $key . '=\'' . addslashes($val) . '\'';
-                    }
+                    $options[] = $key . '=' . self::escapeParam($val);
                 }
                 $highlight .= '{' . implode(',', $options) . '}';
             }
@@ -851,18 +890,20 @@ class Query
     protected function _sqlMatch(?bool $raw = false): ?string
     {
         if (!empty($this->match)) {
-            return !$raw ? '\'' . addslashes($this->match) . '\'' : $this->match;
+            return !$raw ? self::quoteParam($this->match) : $this->match;
         }
 
         return null;
     }
 
     /**
+     * @param bool $needBool
+     *
      * @return string
      */
-    protected function _sqlWhere(): string
+    protected function _sqlWhere(?bool $needBool = false): string
     {
-        return $this->conditions->asString();
+        return trim($this->conditions->asString($needBool));
     }
 
     /**
@@ -979,15 +1020,21 @@ class Query
 
             $match = $this->_sqlMatch();
             $where = $this->_sqlWhere();
+
             if ($match !== null) {
                 $sql .= ' WHERE MATCH(' . $match . ')';
             }
             if ($where) {
                 if ($match !== null) {
-                    $sql .= ' AND (' . trim($where) . ')';
+                    if ($where[0] === '(' && substr($where, -1) === ')' && substr_count($where, '(') === 1) {
+                        $sql .= ' AND ' . $where;
+                    }
+                    else {
+                        $sql .= ' AND (' . $where . ')';
+                    }
                 }
                 else {
-                    $sql .= ' WHERE' . $where;
+                    $sql .= ' WHERE ' . $where;
                 }
             }
             if ($group = $this->_sqlGroup()) {
@@ -1263,7 +1310,13 @@ class Query
      */
     public function bind(array $params): Query
     {
-        $this->params = $params;
+        $this->params = [];
+        foreach ($params as $key => $val) {
+            if ($key[0] !== ':') {
+                $key = ':' . $key;
+            }
+            $this->params[$key] = $val;
+        }
 
         return $this;
     }

@@ -72,6 +72,26 @@ class PDOClient
         return $rows;
     }
 
+    protected function prepare(string $query, ?array $params = []): ?\PDOStatement
+    {
+        if ($stm = $this->dbh->prepare($query)) {
+            if ($params) {
+                foreach ($params as $key => $val) {
+                    if (is_int($val)) {
+                        $stm->bindValue($key, $val, \PDO::PARAM_INT);
+                    }
+                    else {
+                        $stm->bindValue($key, $val, \PDO::PARAM_STR);
+                    }
+                }
+            }
+
+            return $stm;
+        }
+
+        return null;
+    }
+
     /**
      * @param string $query
      * @param array|null $params
@@ -81,8 +101,8 @@ class PDOClient
     public function query(string $query, ?array $params = []): array
     {
         $result = [];
-        if ($stm = $this->dbh->prepare($query)) {
-            if ($stm->execute($params)) {
+        if ($stm = $this->prepare($query, $params)) {
+            if ($stm->execute()) {
                 $result['data'] = $stm->fetchAll(\PDO::FETCH_ASSOC);
                 $result['count'] = $stm->rowCount();
             }
@@ -103,8 +123,8 @@ class PDOClient
     public function select(string $query, ?array $params = []): array
     {
         $result = [];
-        if ($stm = $this->dbh->prepare($query)) {
-            if ($stm->execute($params)) {
+        if ($stm = $this->prepare($query, $params)) {
+            if ($stm->execute()) {
                 $result['data'] = [];
                 do {
                     $rows = $stm->fetchAll(\PDO::FETCH_ASSOC);
@@ -135,8 +155,8 @@ class PDOClient
     public function insert(string $query, ?array $params = []): array
     {
         $result = [];
-        if ($stm = $this->dbh->prepare($query)) {
-            if ($stm->execute($params)) {
+        if ($stm = $this->prepare($query, $params)) {
+            if ($stm->execute()) {
                 $stm = $this->dbh->query('SELECT LAST_INSERT_ID()');
                 if ($stm && ($rows = $stm->fetch()) && !empty($rows[0])) {
                     $id = array_map('intval', explode(',', $rows[0]));

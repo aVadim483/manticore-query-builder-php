@@ -9,15 +9,18 @@ class QueryCondition
     private ?string $operator = null;
     private $arg = null;
     private array $params = [];
+    private int $level = 0;
 
     /**
      * @param string $bool
      * @param mixed $operand
      * @param string|null $op
      * @param string|array|mixed|null $arg
+     * @param int|null $level
      */
-    public function __construct(string $bool, $operand, string $op = null, $arg = null)
+    public function __construct(string $bool, $operand, string $op = null, $arg = null, ?int $level = 0)
     {
+        $this->level = $level;
         $this->bool = $bool;
         if (is_scalar($operand)) {
             $this->operand = $operand;
@@ -26,12 +29,9 @@ class QueryCondition
         $this->arg = $arg;
     }
 
-    public static function _escape_string($val): string
+    public static function _escape_string($val)
     {
-        if (is_numeric($val)) {
-            return (string)$val;
-        }
-        return "'" . addslashes($val) . "'";
+        return Query::quoteParam($val);
     }
 
     /**
@@ -39,13 +39,14 @@ class QueryCondition
      * @param $field
      * @param mixed|null $arg1
      * @param mixed|null $arg2
+     * @param int|null $level
      *
      * @return QueryCondition|QueryConditionSet
      */
-    public static function create($bool, $field, $arg1 = null, $arg2 = null)
+    public static function create($bool, $field, $arg1 = null, $arg2 = null, ?int $level = 0)
     {
         if (is_callable($field)) {
-            $condition = new QueryConditionSet($bool);
+            $condition = new QueryConditionSet($bool, $level);
             $field($condition);
 
             return $condition;

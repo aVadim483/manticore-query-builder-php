@@ -7,10 +7,12 @@ class QueryConditionSet
     private ?string $bool = '';
     private array $operands = [];
     private array $params = [];
+    private int $level = 0;
 
 
-    public function __construct(?string $bool = null)
+    public function __construct(?string $bool = null, ?int $level = 0)
     {
+        $this->level = $level;
         $this->bool = $bool;
     }
 
@@ -18,9 +20,12 @@ class QueryConditionSet
     protected function _add(string $bool, $field, $arg1 = null, $arg2 = null)
     {
         if (!$this->operands) {
-            $bool = '';
+            //$bool = '';
         }
-        $this->operands[] = QueryCondition::create($bool, $field, $arg1, $arg2);
+        if (!$this->bool) {
+            $this->bool = $bool;
+        }
+        $this->operands[] = QueryCondition::create($bool, $field, $arg1, $arg2, $this->level + 1);
     }
 
     /**
@@ -43,7 +48,7 @@ class QueryConditionSet
     }
 
 
-    public function andWhere($field, $arg1 = null, $arg2 = null)
+    public function andWhere($field, $arg1 = null, $arg2 = null, $level = 0)
     {
         $this->_add('AND', $field, $arg1, $arg2);
 
@@ -60,6 +65,8 @@ class QueryConditionSet
 
     /**
      * @param array $bind
+     *
+     * @return $this
      */
     public function bind(array $bind)
     {
@@ -68,6 +75,8 @@ class QueryConditionSet
                 $this->params[$name] = addslashes($value);
             }
         }
+
+        return $this;
     }
 
     /**
@@ -89,17 +98,23 @@ class QueryConditionSet
                 $result = reset($strings);
             }
             else {
-                $result = '(' . implode($strings) . ')';
+                $result = implode($strings);
+                if ($this->level) {
+                    $result = '(' . $result . ')';
+                }
             }
             $result = str_replace(['( ', ' ('], '(', $result);
-            if ($this->bool) {
-                $result = $this->bool . $result;
+            if ($needBool && $this->bool) {
+                $result = $this->bool . ' ' . $result;
             }
         }
 
         return $result;
     }
 
+    /**
+     * @return string
+     */
     public function __toString()
     {
         return $this->asString();

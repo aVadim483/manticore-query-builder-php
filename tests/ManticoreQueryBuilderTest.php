@@ -222,5 +222,257 @@ final class ManticoreQueryBuilderTest extends TestCase
         ManticoreDb::table($table)->drop();
     }
 
+    protected function dataFullText(): array
+    {
+        $i = 1;
+        return [
+            [
+                'id' => $i++,
+                'title' => 'find me',
+                'content' => 'fast and quick',
+            ],
+            [
+                'id' => $i++,
+                'title' => 'find me fast',
+                'content' => 'quick',
+            ],
+            [
+                'id' => $i++,
+                'title' => 'find me slow',
+                'content' => 'quick',
+            ],
+            [
+                'id' => $i++,
+                'title' => 'The quick brown fox jumps over the lazy dog',
+                'content' => 'The five boxing wizards jump quickly',
+            ],
+            [
+                'id' => $i++,
+                'title' => 'find me quick and fast',
+                'content' => 'quick',
+            ],
+            [
+                'id' => $i++,
+                'title' => 'find me fast now',
+                'content' => 'quick',
+            ],
+            [
+                'id' => $i++,
+                'title' => 'The quick brown fox takes a step back and jumps over the lazy dog',
+                'content' => 'The five boxing wizards jump quickly',
+            ],
+            [
+                'id' => $i++,
+                'title' => 'The brown and beautiful fox takes a step back and jumps over the lazy dog',
+                'content' => 'The five boxing wizards jump quickly',
+            ],
+            [
+                'id' => $i++,
+                'title' => '<h1>Samsung Galaxy S10</h1><div>Is a smartphone introduced by Samsung in 2019</div>',
+                'content' => '',
+            ],
+            [
+                'id' => $i++,
+                'title' => '<h1>Samsung</h1><div>Galaxy,Note,A,J</div>',
+                'content' => '',
+            ],
+            [
+                'id' => $i++,
+                'title' => 'Hello world',
+                'content' => '',
+            ],
+            [
+                'id' => $i++,
+                'title' => '<h1>Hello</h1> <h1>world</h1>',
+                'content' => '',
+            ],
+            [
+                'id' => $i++,
+                'title' => '<h1>Hello world</h1>',
+                'content' => '',
+            ],
+            [
+                'id' => $i++,
+                'title' => 'The brown fox takes a step back. Then it jumps over the lazy dog',
+                'content' => '',
+            ],
+        ];
+    }
+
+    public function testFullText()
+    {
+        $table = 'test1_' . uniqid();
+        ManticoreDb::table($table)->drop(true);
+        ManticoreDb::table($table)->create([
+            'title' => 'text',
+            'content' => 'text',
+        ]);
+        $insert = $this->dataFullText();
+        ManticoreDb::table($table)->insert($insert);
+
+        $res = ManticoreDb::table($table)->match('find me fast')->get();
+        $this->assertSame([1, 2, 6, 5], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('find me !fast')->get();
+        $this->assertSame([3], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('find me MAYBE slow')->get();
+        $this->assertSame([3, 1, 2, 5, 6], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('@title find me fast')->get();
+        $this->assertSame([2, 6, 5], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('@title lazy dog')->get();
+        $this->assertSame([4, 7, 8, 14], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('@title[5] lazy dog')->get();
+        $this->assertEmpty($res);
+
+        $res = ManticoreDb::table($table)->match('@@relaxed @(title,keywords) lazy dog')->get();
+        $this->assertSame([4, 7, 8, 14], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('"fox bird lazy dog"/3')->get();
+        $this->assertSame([4, 7, 8, 14], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('"find me fast"')->get();
+        $this->assertSame([2, 6], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('find << me << fast')->get();
+        $this->assertSame([2, 6, 5], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('"brown fox" NOTNEAR/5 jumps')->get();
+        $this->assertSame([7, 14], array_column($res, 'id'));
+
+        ManticoreDb::table($table)->drop();
+    }
+
+    protected function dataWhere(): array
+    {
+        $i = 1;
+        return [
+            [
+                'id' => $i++,
+                'time' => time(),
+                'demo' => false,
+                'country' => 'US',
+                'price' => 100.00,
+                'content' => 'lorem ipsum',
+            ],
+            [
+                'id' => $i++,
+                'time' => time(),
+                'demo' => false,
+                'country' => 'DE',
+                'price' => 200.00,
+                'content' => 'Lorem ipsum dolor sit amet',
+            ],
+            [
+                'id' => $i++,
+                'time' => time(),
+                'demo' => true,
+                'country' => 'US',
+                'price' => 300.00,
+                'content' => 'ipsum dolor sit amet',
+            ],
+            [
+                'id' => $i++,
+                'time' => time(),
+                'demo' => false,
+                'country' => 'DE',
+                'price' => 180.00,
+                'content' => 'amet',
+            ],
+            [
+                'id' => $i++,
+                'time' => time(),
+                'demo' => true,
+                'country' => 'UK',
+                'price' => 230.00,
+                'content' => 'dolor sit',
+            ],
+            [
+                'id' => $i++,
+                'time' => time(),
+                'demo' => false,
+                'country' => 'UK',
+                'price' => 310.00,
+                'content' => 'ipsum dolor sit',
+            ],
+            [
+                'id' => $i++,
+                'time' => time(),
+                'demo' => false,
+                'country' => 'DE',
+                'price' => 185.00,
+                'content' => 'ipsum',
+            ],
+            [
+                'id' => $i++,
+                'time' => time(),
+                'demo' => true,
+                'country' => 'US',
+                'price' => 298.00,
+                'content' => 'dolor sit',
+            ],
+        ];
+    }
+
+    public function testWhere()
+    {
+        $table = 'test1_' . uniqid();
+        ManticoreDb::table($table)->drop(true);
+        ManticoreDb::table($table)->create([
+            'time' => 'timestamp',
+            'demo' => 'bool',
+            'country' => 'string',
+            'price' => 'float',
+            'content' => 'text',
+        ]);
+        $insert = $this->dataWhere();
+        ManticoreDb::table($table)->insert($insert);
+
+        $res = ManticoreDb::table($table)->match('ipsum')
+            ->where('country', 'de')
+            ->get();
+        $this->assertSame([2, 7], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('ipsum')
+            ->where('country', 'de')
+            ->orWhere('price', '>', 150)
+            ->get();
+        $this->assertSame([2, 3, 6, 7], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('ipsum')
+            ->where(function ($cond) {
+                $cond->where('country', 'de');
+                $cond->orWhere('price', '>', 150);
+            })
+            ->get();
+        $this->assertSame([2, 3, 6, 7], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)->match('ipsum')
+            ->whereIn('country', ['de', 'us'])
+            ->get();
+        $this->assertSame([1, 2, 3,7], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)
+            ->where('country=:de')
+            ->bind([':de' => 'de'])
+            ->get();
+        $this->assertSame([2, 4, 7], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)
+            ->where('demo', true)
+            ->get();
+        $this->assertSame([3, 5, 8], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)
+            ->where('demo', 0)
+            ->get();
+        $this->assertSame([1, 2, 4, 6, 7], array_column($res, 'id'));
+
+        ManticoreDb::table($table)->drop();
+    }
+
 }
 
