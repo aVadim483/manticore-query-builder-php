@@ -1620,6 +1620,22 @@ class Query
     }
 
     /**
+     * @param string $name
+     *
+     * @return array
+     */
+    public function pluck(string $name): array
+    {
+        $result = $this->get();
+
+        if ($result) {
+            return array_combine(array_keys($result), array_column($result, $name));
+        }
+
+        return [];
+    }
+
+    /**
      * @param array $data
      * @param int|null $id
      *

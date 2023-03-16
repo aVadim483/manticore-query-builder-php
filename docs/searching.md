@@ -1,11 +1,23 @@
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
-## Searching
+Jump To:
+* [Retrieving Rows From A Table](#retrieving-rows-from-a-table)
+* [Retrieving a single row or column from a table](#retrieving-a-single-row-or-column-from-a-table)
+* [Select statements](#select-statements)
+* [The MATCH clauses](#the-match-clauses)
+* [The WHERE Clause](#the-where-clause)
+* [limit() and offset()](#limit---and-offset--)
+* [maxMatches()](#maxmatches--)
+* [Working with JSON attributes](#working-with-json-attributes)
+* [Faceted search](#faceted-search)
+
+## Retrieving rows from a table
 
 ```php
 // Returns object of ResultSet
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->exec();
-// $res->result() returns collection of rows, key of each row is ID of record in table
+// $res->result() returns collection of rows
+// If one of the columns contains ID then these values will be used as keys for result records
 foreach($res->result() as $id => $row) {
     // $id - ID of found record
     // $row - array <field_name> => <field_value>
@@ -27,6 +39,31 @@ $query->where('price', '>', 1100);
 $res = $query->get('*');
 ```
 
+## Retrieving a single row or column from a table
+
+```php
+// Returns the first row according to the given conditions
+$record = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 500)->first();
+
+// Returns array of values from field 'name'
+$record = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 500)->pluck('name');
+```
+
+## Select statements
+
+```php
+// Returns object of ResultSet
+$res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->select(['id', 'name', 'price'])->exec();
+// The same result (shorter notation)
+$res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->search(['id', 'name', 'price']);
+
+// Returns collection of rows
+$res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->select(['id', 'name', 'price'])->get();
+// The same result (shorter notation)
+$res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get(['id', 'name', 'price']);
+
+```
+
 ## Search conditions
 
 ### The MATCH clauses
@@ -40,7 +77,7 @@ $res = ManticoreDb::table('articles')
     ->get();
 ```
 
-### The WHERE clause
+### The WHERE Clause
 
 ```php
 // SELECT * FROM ?products WHERE price <= 999.0;
@@ -122,7 +159,71 @@ Set max_matches for the search.
 $query->maxMatches(10000);
 ```
 
-### Faceted search
+## Working with JSON attributes
+
+This section based on examples from [Manticore Search Courses](https://play.manticoresearch.com/json/).
+We are going to use a simple document with id, name and a metadata attribute representing a product like this:
+```json
+{
+  "locations": [
+    {
+      "name": "location1",
+      "lat": 23.000000,
+      "long": 46.500000,
+      "stock": 30
+    },
+    {
+      "name": "location2",
+      "lat": 24.000000,
+      "long": 47.500000,
+      "stock": 20
+    },
+    {
+      "name": "location3",
+      "lat": 24.500000,
+      "long": 47.500000,
+      "stock": 10
+    }
+  ],
+  "color": [
+    "blue",
+    "black",
+    "yellow"
+  ],
+  "price": 210.00,
+  "cpu": {
+    "model": "Kyro 345",
+    "cores": 8,
+    "chipset": "snapdragon 845"
+  },
+  "memory": 128
+}
+```
+Let's perform a filtering by metadata
+```php
+// SELECT * FROM t WHERE DOUBLE(metadata.price)>200;
+$res = ManticoreDb::table('t')->where('DOUBLE(metadata.price)', '>', 250)->get();
+
+// SELECT * FROM t WHERE metadata.cpu.model='Kyro 345';
+$res = ManticoreDb::table('t')->where('metadata.cpu.model', 'Kyro 345')->get();
+
+// SELECT id, ANY(x.stock > 0 AND GEODIST(23.0,46.5, DOUBLE(x.lat), DOUBLE(x.long), {out=mi}) < 10 FOR x IN metadata.locations) AS close_to_you FROM t ORDER BY close_to_you DESC;
+$res = ManticoreDb::table('t')->select(['id', 'ANY(x.stock > 0 AND GEODIST(23.0,46.5, DOUBLE(x.lat), DOUBLE(x.long), {out=mi}) < 10 FOR x IN metadata.locations) AS close_to_you'])
+    ->orderByDesc('close_to_you')->get();
+
+// SELECT * FROM t ORDER BY INTEGER(metadata.video_rec[0]) DESC;
+$res = ManticoreDb::table('t')->orderByDesc('INTEGER(metadata.video_rec[0])')->get();
+
+// SELECT *, IN(metadata.color, 'black', 'white') AS color_filter WHERE color_filter=1;
+// Here we have to use a bind() because the select() escapes the quotes
+$res = ManticoreDb::table($table)->select(['*', 'IN(metadata.color, :black, :white) as color_filter'])
+    ->where('color_filter=1')
+    ->bind([':black' => 'black', ':white' => 'white'])
+    ->get();
+```
+
+
+## Faceted search
 
 ```php
 $res = ManticoreDb::table('products')
