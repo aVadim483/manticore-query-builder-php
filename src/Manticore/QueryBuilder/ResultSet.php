@@ -18,7 +18,7 @@ class ResultSet
     private string $resultType;
     private $resultData;
     private array $columns;
-    private array $variables;
+    private array $variables = [];
 
 
     /**
@@ -45,7 +45,13 @@ class ResultSet
             $this->columns = ($row && is_array($row)) ? array_keys($row) : [];
             foreach ($this->resultData as $item) {
                 if (isset($item['Variable_name'], $item['Value'])) {
-                    $this->variables[$item['Variable_name']] = $item['Value'];
+                    $this->setVariable($item['Variable_name'], $item['Value']);
+                    if ($item['Variable_name'] === 'settings' && $item['Value']) {
+                        foreach (explode("\n", $item['Value']) as $var) {
+                            [$k, $v] = array_map('trim', explode('=', $var, 2));
+                            $this->setVariable($k, $v);
+                        }
+                    }
                 }
             }
         }
@@ -61,6 +67,22 @@ class ResultSet
         }
         else {
             $this->status = 'done';
+        }
+    }
+
+    /**
+     * @param string $name
+     * @param mixed $value
+     *
+     * @return void
+     */
+    protected function setVariable(string $name, $value)
+    {
+        if (preg_match('#^\d+$#', $value)) {
+            $this->variables[$name] = (int)$value;
+        }
+        else {
+            $this->variables[$name] = $value;
         }
     }
 
@@ -157,7 +179,7 @@ class ResultSet
     }
 
     /**
-     * Returns the meta data received after SQL request
+     * Returns the metadata received after SQL request
      *
      * @return array
      */
@@ -221,5 +243,13 @@ class ResultSet
     public function variable($name)
     {
         return $this->variables[$name] ?? null;
+    }
+
+    /**
+     * @return array
+     */
+    public function variables(): array
+    {
+        return $this->variables;
     }
 }

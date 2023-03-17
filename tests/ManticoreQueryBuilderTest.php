@@ -48,9 +48,7 @@ final class ManticoreQueryBuilderTest extends TestCase
 
         ManticoreDb::init($config);
 
-        // default connection "test1"
-        ManticoreDb::table('?products')->drop(true);
-        $res = ManticoreDb::table('?products')->create([
+        $fields = [
             'created_at' => 'timestamp',
             'manufacturer' => 'string',
             'title' => 'text',
@@ -58,21 +56,58 @@ final class ManticoreQueryBuilderTest extends TestCase
             'price' => ['type' => 'float'],
             'categories' => 'multi',
             'on_sale' => 'bool',
-        ]);
+        ];
+
+        $options = [
+            'charset_table' => 'cjk',
+            'morphology' => 'icu_chinese',
+        ];
+
+        // default connection "test1"
+        ManticoreDb::table('?products')->drop(true);
+        $res = ManticoreDb::table('?products')->options($options)->create($fields);
         $this->assertTrue($res->result());
 
+        $res = ManticoreDb::tableSettings('?products');
+        $this->assertEquals('cjk', $res['charset_table']);
+        $this->assertEquals('icu_chinese', $res['morphology']);
+
+        $res = ManticoreDb::tableStatus('?products');
+        $this->assertEquals('rt', $res['index_type']);
+        $this->assertEquals(0, $res['indexed_documents']);
+
+        $res = ManticoreDb::tableDescribe('?products');
+        foreach ($res as $col => $data) {
+            if ($col === 'id') {
+                $this->assertEquals('bigint', $data['Type']);
+            }
+            else {
+                $type = (is_array($fields[$col]) ? $fields[$col]['type'] : $fields[$col]);
+                $this->assertEquals($type === 'multi' ? 'mva' : $type, $data['Type']);
+            }
+        }
+
         // connection "test2"
-        ManticoreDb::connection('test2')->index('?products')->drop(true);
-        $res = ManticoreDb::connection('test2')->create('?products', function (SchemaTable $index) {
-            $index->timestamp('created_at');
-            $index->string('manufacturer');
-            $index->text('title');
-            $index->json('info');
-            $index->float('price');
-            $index->multi('categories');
-            $index->bool('on_sale');
+        ManticoreDb::connection('test2')->table('?products')->drop(true);
+        $res = ManticoreDb::connection('test2')->create('?products', function (SchemaTable $table) {
+            $table->timestamp('created_at');
+            $table->string('manufacturer');
+            $table->text('title');
+            $table->json('info');
+            $table->float('price');
+            $table->multi('categories');
+            $table->bool('on_sale');
+
+            $table->tableMorphology('lemmatize_en_all');
+            $table->tableOptions(['min_stemming_len' => 5, 'html_strip' => 1, 'html_index_attrs' => 'img=alt,title; a=title;']);
         });
         $this->assertTrue($res->result());
+
+        $res = ManticoreDb::connection('test2')->tableSettings('?products');
+        $this->assertEquals('lemmatize_en_all', $res['morphology']);
+        $this->assertEquals('5', $res['min_stemming_len']);
+        $this->assertEquals('1', $res['html_strip']);
+        $this->assertEquals('img=alt,title; a=title;', $res['html_index_attrs']);
 
         // default connection "test1"
         $res = ManticoreDb::showTables('?%');

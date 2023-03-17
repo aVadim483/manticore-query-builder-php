@@ -4,13 +4,8 @@
 
 ---
 
-[Configuration](configuration.md)
-
-[Create Table](create.md)
-
-[Searching](searching.md)
-
-[Listing & Describe Tables](tables.md)
-
-[ResultSet Class](result_set.md)
+* [Configuration](configuration.md)
+* [Searching](searching.md)
+* [Create, listing & Describe Tables](tables.md)
+* [ResultSet Class](result_set.md)
 

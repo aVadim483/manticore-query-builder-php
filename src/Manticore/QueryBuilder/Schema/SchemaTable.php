@@ -6,9 +6,13 @@ namespace avadim\Manticore\QueryBuilder\Schema;
 
 class SchemaTable
 {
-    public string $engine = '';
+    private string $engine = '';
+
+    private array $morphology = [];
 
     private array $columns = [];
+
+    private array $options = [];
 
 
     public function __construct(?array $data = [])
@@ -55,12 +59,98 @@ class SchemaTable
             $columns[] = (string)$column;
         }
 
-        return implode(', ', $columns);
+        $result = '(' . implode(', ', $columns) . ')';
+        if ($this->engine) {
+            $result .= ' engine=\'' . $this->engine . '\'';
+        }
+        if ($this->morphology) {
+            $result .= ' morphology=\'' . implode(',', $this->morphology) . '\'';
+        }
+        if ($this->options) {
+            foreach ($this->options as $name => $value) {
+                if (is_array($value)) {
+                    $value = implode(',', $value);
+                }
+                $result .= ' ' . (!is_int($name) ? $name . '=' : '') . '\'' . addslashes($value) . '\'';
+            }
+        }
+
+        return $result;
     }
 
-    public function tableEngine($engine)
+    /**
+     * Set engine for the table schema
+     *
+     * @param string $engine
+     *
+     * @return $this
+     */
+    public function tableEngine(string $engine): SchemaTable
     {
         $this->engine = $engine;
+
+        return $this;
+    }
+
+    /**
+     * Set morphology for the table schema
+     *
+     * @param array|string $morphology
+     *
+     * @return $this
+     */
+    public function tableMorphology($morphology): SchemaTable
+    {
+        $this->morphology = (array)$morphology;
+
+        return $this;
+    }
+
+    /**
+     * Set morphology for the table schema (alias of tableMorphology())
+     *
+     * @param array|string $morphology
+     *
+     * @return $this
+     */
+    public function morphology($morphology): SchemaTable
+    {
+        $this->tableMorphology($morphology);
+
+        return $this;
+    }
+
+    /**
+     * @param array $options
+     *
+     * @return $this
+     */
+    public function tableOptions(array $options): SchemaTable
+    {
+        $this->options = [];
+        foreach ($options as $name => $value) {
+            $value = (string)$value;
+            if ($name === 'engine') {
+                $this->tableEngine($value);
+            }
+            elseif ($name === 'morphology') {
+                $this->tableMorphology($value);
+            }
+            elseif (is_int($name)) {
+                if (strpos($value, '=') && $value[0] !== '\'' && $value[0] !== '\"') {
+                    [$key, $val] = explode('=', $value, 2);
+                    $this->options[$key] = trim($val, '\'" ');
+                }
+                else {
+                    $this->options[] = $value;
+                }
+            }
+            else {
+                $this->options[$name] = trim($value, '\'"');
+            }
+        }
+
+        return $this;
     }
 
     /**

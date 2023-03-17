@@ -83,6 +83,8 @@ class Connection
     }
 
     /**
+     * SHOW TABLES
+     *
      * @param string|null $pattern
      *
      * @return array
@@ -95,6 +97,50 @@ class Connection
     }
 
     /**
+     * SHOW TABLE $tableName STATUS
+     *
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public function tableStatus(string $tableName): array
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->status($tableName);
+
+        return $this->lastResultSet->variables();
+    }
+
+    /**
+     * SHOW TABLE $tableName SETTINGS
+     *
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public function tableSettings(string $tableName): array
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->settings($tableName);
+
+        return $this->lastResultSet->variables();
+    }
+
+    /**
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public function tableDescribe(string $tableName): array
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->describe();
+        $result = [];
+        foreach ($this->lastResultSet->result() as $col) {
+            $result[$col['Field']] = $col;
+        }
+
+        return $result;
+    }
+
+    /**
      * @param string|null $pattern
      *
      * @return array
@@ -104,28 +150,6 @@ class Connection
         $this->lastResultSet = $this->query()->showVariables($pattern);
 
         return $this->lastResultSet->result();
-    }
-
-    /**
-     * @param string $tableName
-     *
-     * @return array
-     */
-    public function describe(string $tableName): array
-    {
-        $this->lastResultSet = $this->query()->table($tableName)->describe();
-
-        return $this->lastResultSet->result();
-    }
-
-    /**
-     * @param string $tableName
-     *
-     * @return array
-     */
-    public function describeTable(string $tableName): array
-    {
-        return $this->describe($tableName);
     }
 
     /**

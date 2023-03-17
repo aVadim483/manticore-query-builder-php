@@ -105,15 +105,63 @@ class Builder
     /**
      * @param string $name
      * @param array|SchemaTable|callable $schema
+     * @param array|null $options
      *
      * @return ResultSet
      */
-    public static function create(string $name, $schema): ResultSet
+    public static function create(string $name, $schema, ?array $options = []): ResultSet
     {
-        return self::connection()->table($name)->create($schema);
+        $query = self::connection()->table($name);
+        if ($options) {
+            $query->options($options);
+        }
+
+        return $query->create($schema);
     }
 
     /**
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public static function tableStatus(string $tableName): array
+    {
+        return self::connection()->tableStatus($tableName);
+    }
+
+    /**
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public static function tableSettings(string $tableName): array
+    {
+        return self::connection()->tableSettings($tableName);
+    }
+
+    /**
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public static function tableDescribe(string $tableName): array
+    {
+        return self::connection()->tableDescribe($tableName);
+    }
+
+    /**
+     * @param string $tableName
+     *
+     * @return array
+     */
+    public static function describe(string $tableName): array
+    {
+        return self::tableDescribe($tableName);
+    }
+
+    /**
+     * Returns array of all currently active tables along with their types
+     *
      * @param string|null $pattern
      *
      * @return array
@@ -124,6 +172,8 @@ class Builder
     }
 
     /**
+     * Returns the current values of a few server-wide variables
+     *
      * @param string|null $pattern
      *
      * @return array
@@ -134,16 +184,8 @@ class Builder
     }
 
     /**
-     * @param string $tableName
+     * Returns the CREATE TABLE statement used to create the specified table
      *
-     * @return array
-     */
-    public static  function describe(string $tableName): array
-    {
-        return self::connection()->describe($tableName);
-    }
-
-    /**
      * @param string $tableName
      *
      * @return string

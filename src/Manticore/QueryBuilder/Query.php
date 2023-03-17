@@ -869,7 +869,7 @@ class Query
     /**
      * @return string
      */
-    protected function _sqlSchemaColumns(): string
+    protected function _sqlSchema(): string
     {
         return (string)$this->schema;
     }
@@ -1093,13 +1093,7 @@ class Query
         }
 
         elseif ($this->command === 'CREATE') {
-            $sql = 'CREATE TABLE ' . $this->_sqlTable() . '(' . $this->_sqlSchemaColumns() . ')';
-            if (!empty($this->schema->engine)) {
-                $sql .= ' engine=\'' . $this->schema->engine . '\'';
-            }
-            elseif (!empty($this->table['engine'])) {
-                $sql .= ' engine=\'' . $this->table['engine'] . '\'';
-            }
+            $sql = 'CREATE TABLE ' . $this->_sqlTable() . $this->_sqlSchema();
         }
 
         else {
@@ -1155,9 +1149,12 @@ class Query
             $schema($this->schema);
         }
         else {
-            //var_dump($schema);exit;
             foreach($schema as $name => $column) {
-                if (is_int($name) && is_string($column)) {
+                if ($name === '_options') {
+                    $this->schema->tableOptions($column);
+                    continue;
+                }
+                elseif (is_int($name) && is_string($column)) {
                     if (strpos($column, ' ')) {
                         [$name, $type] = explode(' ', $column);
                     }
@@ -1207,6 +1204,21 @@ class Query
     {
         return $this->engine('rowwise');
     }
+
+    /**
+     * Set options for CREATE statement
+     *
+     * @param array $options
+     *
+     * @return $this
+     */
+    public function options(array $options): Query
+    {
+        $this->table['options'] = $options;
+
+        return $this;
+    }
+
 
     /**
      * @param string $names
@@ -1390,6 +1402,12 @@ class Query
             $schema = $name;
         }
         $this->schema($schema);
+        if ($this->table['options']) {
+            $this->schema->tableOptions($this->table['options']);
+        }
+        if ($this->table['engine']) {
+            $this->schema->tableEngine($this->table['engine']);
+        }
         $this->command = 'CREATE';
 
         $request = $this->parse();
@@ -1472,6 +1490,8 @@ class Query
     }
 
     /**
+     * SHOW TABLES [ LIKE pattern ]
+     *
      * @param string|null $pattern
      *
      * @return ResultSet
@@ -1486,6 +1506,48 @@ class Query
         elseif ($this->forcePrefix && $pattern !== '' && $pattern !== '%') {
             $sql .= ' LIKE \'' . $this->prefix . '%\'';
         }
+        $request = [
+            'command' => $this->command,
+            'query' => $sql,
+            'original' => null,
+        ];
+        $result = $this->_execQuery($request);
+
+        return new ResultSet($result);
+    }
+
+    /**
+     * SHOW TABLE $tableName STATUS
+     *
+     * @param string $tableName
+     *
+     * @return ResultSet
+     */
+    public function status(string $tableName): ResultSet
+    {
+        $this->command = 'STATUS';
+        $sql = 'SHOW TABLE ' . $this->_sqlTable() . ' STATUS';
+        $request = [
+            'command' => $this->command,
+            'query' => $sql,
+            'original' => null,
+        ];
+        $result = $this->_execQuery($request);
+
+        return new ResultSet($result);
+    }
+
+    /**
+     * SHOW TABLE $tableName SETTINGS
+     *
+     * @param string $tableName
+     *
+     * @return ResultSet
+     */
+    public function settings(string $tableName): ResultSet
+    {
+        $this->command = 'SETTINGS';
+        $sql = 'SHOW TABLE ' . $this->_sqlTable() . ' SETTINGS';
         $request = [
             'command' => $this->command,
             'query' => $sql,
@@ -1746,43 +1808,4 @@ class Query
         return new ResultSet($result, 'replaced');
     }
 
-    /**
-     * @return ResultSet
-     */
-    public function status(): ResultSet
-    {
-        $sql = 'SHOW INDEX ' . $this->_sqlTable() . ' STATUS';
-        $response = $this->client->query($sql);
-        $result = [
-            'command' => 'STATUS',
-            'query' => $sql,
-            'original' => null,
-            'result' => [
-                'type' => 'array',
-                'data' => $response['data'],
-            ]
-        ];
-
-        return new ResultSet($result);
-    }
-
-    /**
-     * @return ResultSet
-     */
-    public function settings(): ResultSet
-    {
-        $sql = 'SHOW INDEX ' . $this->_sqlTable() . ' SETTINGS';
-        $response = $this->client->query($sql);
-        $result = [
-            'command' => 'SETTINGS',
-            'query' => $sql,
-            'original' => null,
-            'result' => [
-                'type' => 'array',
-                'data' => $response['data'],
-            ]
-        ];
-
-        return new ResultSet($result);
-    }
 }
