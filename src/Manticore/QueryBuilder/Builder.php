@@ -111,12 +111,7 @@ class Builder
      */
     public static function create(string $name, $schema, ?array $options = []): ResultSet
     {
-        $query = self::connection()->table($name);
-        if ($options) {
-            $query->options($options);
-        }
-
-        return $query->create($schema);
+        return self::connection()->create($name, $schema, $options);
     }
 
     /**

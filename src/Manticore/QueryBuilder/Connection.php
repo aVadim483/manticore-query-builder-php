@@ -72,12 +72,18 @@ class Connection
     /**
      * @param string $name
      * @param array|SchemaTable|callable $schema
+     * @param array|null $options
      *
      * @return ResultSet
      */
-    public function create(string $name, $schema): ResultSet
+    public function create(string $name, $schema, ?array $options = []): ResultSet
     {
-        $this->lastResultSet = $this->query()->create($name, $schema);;
+        $query = $this->query()->table($name);
+        if ($options) {
+            $query->options($options);
+        }
+
+        $this->lastResultSet = $query->create($schema);
 
         return $this->lastResultSet;
     }

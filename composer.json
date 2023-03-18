@@ -4,11 +4,17 @@
     "keywords": [
 		"manticoresoftware",
         "manticoresearch",
+        "manticore",
+        "database",
+        "query",
+        "builder",
+        "sql",
         "spinx",
+        "spinxql",
         "search"
     ],
     "type": "library",
-    "homepage": "https://github.com/manticore-query-builder-php",
+    "homepage": "https://github.com/aVadim483/manticore-query-builder-php",
     "license": "MIT",
     "autoload": {
         "psr-4": {
