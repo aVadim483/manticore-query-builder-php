@@ -78,7 +78,7 @@ class ResultSet
      */
     protected function setVariable(string $name, $value)
     {
-        if (preg_match('#^\d+$#', $value)) {
+        if (preg_match('#^(-)?\d+$#', $value)) {
             $this->variables[$name] = (int)$value;
         }
         else {

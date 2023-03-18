@@ -93,7 +93,7 @@ class Query
 
     public static function quoteParam($param): string
     {
-        if (is_numeric($param)) {
+        if (!is_string($param) && is_numeric($param)) {
             $result = (string)$param;
             if (is_float($param)) {
                 $result = str_replace(',', '.', $result);

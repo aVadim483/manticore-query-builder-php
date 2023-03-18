@@ -566,7 +566,7 @@ class Parser
 
         $result = '';
         foreach ($arr as $value) {
-            if ($result) {
+            if ($result != '') {
                 $result .= ',';
             }
             $result .= self::formatValue($value, $type);
@@ -616,9 +616,10 @@ class Parser
             case 'double':
                 $value = (float)$value;
                 return str_replace(',', '.', (string)$value);
+            case 'mva':
             case 'multi':
             case 'multi64':
-                return self::formatArray($value, 'int');
+                return (string)((int)$value);
             case 'NULL':
                 return 'NULL';
         }

@@ -140,20 +140,6 @@ class QueryCondition
             }
             $result = $field . $operator . $arg;
         }
-/*
-        elseif ($this->operator === 'IS NULL') {
-            $result = $field . ' IS NULL';
-        }
-        else {
-            if ($this->operator === 'IN' || $this->operator === 'BETWEEN') {
-                $operator = ' ' . $this->operator . ' ';
-            }
-            else {
-                $operator = $this->operator;
-            }
-            $result = $field . $operator . $arg;
-        }
-*/
         if ($needBool) {
             $result = $this->bool . ' (' . $result . ')';
         }

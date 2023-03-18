@@ -383,8 +383,17 @@ final class ManticoreQueryBuilderTest extends TestCase
 
     protected function dataWhere(): array
     {
+        $fields = [
+            'time' => 'timestamp',
+            'demo' => 'bool',
+            'country' => 'string',
+            'price' => 'float',
+            'content' => 'text',
+            'sizes' => 'multi',
+            'values' => 'multi64',
+        ];
         $i = 1;
-        return [
+        $inserts = [
             [
                 'id' => $i++,
                 'time' => time(),
@@ -392,6 +401,8 @@ final class ManticoreQueryBuilderTest extends TestCase
                 'country' => 'US',
                 'price' => 100.00,
                 'content' => 'lorem ipsum',
+                'sizes' => [1, 3, 5],
+                'values' => [0, -1, 1],
             ],
             [
                 'id' => $i++,
@@ -400,6 +411,8 @@ final class ManticoreQueryBuilderTest extends TestCase
                 'country' => 'DE',
                 'price' => 200.00,
                 'content' => 'Lorem ipsum dolor sit amet',
+                'sizes' => [2, 4, 6],
+                'values' => [PHP_INT_MIN, 0, PHP_INT_MAX],
             ],
             [
                 'id' => $i++,
@@ -408,6 +421,8 @@ final class ManticoreQueryBuilderTest extends TestCase
                 'country' => 'US',
                 'price' => 300.00,
                 'content' => 'ipsum dolor sit amet',
+                'sizes' => [1, 2, 3],
+                'values' => [9, 36, 223, 372, 775, 807, 854],
             ],
             [
                 'id' => $i++,
@@ -416,6 +431,8 @@ final class ManticoreQueryBuilderTest extends TestCase
                 'country' => 'DE',
                 'price' => 180.00,
                 'content' => 'amet',
+                'sizes' => [4, 5, 6],
+                'values' => [0, PHP_INT_MAX],
             ],
             [
                 'id' => $i++,
@@ -424,6 +441,8 @@ final class ManticoreQueryBuilderTest extends TestCase
                 'country' => 'UK',
                 'price' => 230.00,
                 'content' => 'dolor sit',
+                'sizes' => [1, 2, 3, 4, 5, 6],
+                'values' => [PHP_INT_MIN],
             ],
             [
                 'id' => $i++,
@@ -432,6 +451,8 @@ final class ManticoreQueryBuilderTest extends TestCase
                 'country' => 'UK',
                 'price' => 310.00,
                 'content' => 'ipsum dolor sit',
+                'sizes' => [],
+                'values' => [18, 446, 744, 73, 709, 551, 615],
             ],
             [
                 'id' => $i++,
@@ -440,6 +461,8 @@ final class ManticoreQueryBuilderTest extends TestCase
                 'country' => 'DE',
                 'price' => 185.00,
                 'content' => 'ipsum',
+                'sizes' => [2],
+                'values' => [4, 294, 967, 295, 0],
             ],
             [
                 'id' => $i++,
@@ -448,23 +471,21 @@ final class ManticoreQueryBuilderTest extends TestCase
                 'country' => 'US',
                 'price' => 298.00,
                 'content' => 'dolor sit',
+                'sizes' => [4],
+                'values' => [0, -2147483648],
             ],
         ];
+
+        return ['fields' => $fields, 'inserts' => $inserts];
     }
 
     public function testWhere()
     {
+        $data = $this->dataWhere();;
         $table = 'test1_' . uniqid();
         ManticoreDb::table($table)->drop(true);
-        ManticoreDb::table($table)->create([
-            'time' => 'timestamp',
-            'demo' => 'bool',
-            'country' => 'string',
-            'price' => 'float',
-            'content' => 'text',
-        ]);
-        $insert = $this->dataWhere();
-        ManticoreDb::table($table)->insert($insert);
+        ManticoreDb::table($table)->create($data['fields']);
+        ManticoreDb::table($table)->insert($data['inserts']);
 
         $res = ManticoreDb::table($table)->match('ipsum')
             ->where('country', 'de')
@@ -491,6 +512,17 @@ final class ManticoreQueryBuilderTest extends TestCase
         $this->assertSame([1, 2, 3,7], array_column($res, 'id'));
 
         $res = ManticoreDb::table($table)
+            ->where('country', '!=', '12')
+            ->where('price', '>', 250)
+            ->pluck('id');
+        $this->assertSame([3, 6, 8], array_values($res));
+
+        $res = ManticoreDb::table($table)
+            ->where('country', '!=', 'us')
+            ->count();
+        $this->assertSame(5, $res);
+
+        $res = ManticoreDb::table($table)
             ->where('country=:de')
             ->bind([':de' => 'de'])
             ->get();
@@ -505,6 +537,23 @@ final class ManticoreQueryBuilderTest extends TestCase
             ->where('demo', 0)
             ->get();
         $this->assertSame([1, 2, 4, 6, 7], array_column($res, 'id'));
+
+        $res = ManticoreDb::table($table)
+            ->where('ANY(sizes)', 6)
+            ->pluck('id');
+        $this->assertSame([2, 4, 5], array_values($res));
+
+        $res = ManticoreDb::table($table)
+            ->where('ALL(values)', '>', 0)
+            ->pluck('id');
+        $this->assertSame([3, 6], array_values($res));
+
+        $res = ManticoreDb::table($table)
+            ->where('ANY(values)', PHP_INT_MIN)
+            ->limit(1)
+            ->orderByDesc('id')
+            ->pluck('id');
+        $this->assertSame([5], array_values($res));
 
         ManticoreDb::table($table)->drop();
     }
