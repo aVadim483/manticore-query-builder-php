@@ -89,7 +89,12 @@ $res = ManticoreDb::sql('SHOW TABLES LIKE abc%')->get();
 $res = ManticoreDb::showTables('abc%');
 
 // Get tables with prefix
+$res = ManticoreDb::showTables();
+// ... equal to
 $res = ManticoreDb::showTables('?%');
+
+// Get all tables (ignore prefix)
+$res = ManticoreDb::showTables('%');
 ```
 
 ### SHOW CREATE TABLE
