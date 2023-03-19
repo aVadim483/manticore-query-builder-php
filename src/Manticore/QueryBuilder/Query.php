@@ -1500,6 +1500,9 @@ class Query
     {
         $this->command = 'SHOW TABLES';
         $sql = 'SHOW TABLES';
+        if (!$pattern && $this->prefix) {
+            $pattern = '?%';
+        }
         if ($pattern) {
             $sql .= ' LIKE \'' . Parser::resolveTableName($pattern, $this->prefix, $this->forcePrefix) . '\'';
         }
