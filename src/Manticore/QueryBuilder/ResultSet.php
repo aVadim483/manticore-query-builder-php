@@ -33,8 +33,8 @@ class ResultSet
         $this->meta = $data['meta'] ?? [];
         $this->facets = $data['facets'] ?? [];
 
-        $this->resultType = $data['result']['type'];
-        $this->resultData = $data['result']['data'];
+        $this->resultType = $data['result']['type'] ?? '';
+        $this->resultData = $data['result']['data'] ?? null;
         if ($this->resultType === 'collection' || $this->resultType === 'array') {
             if (is_array($this->resultData)) {
                 $row = reset($this->resultData);

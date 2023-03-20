@@ -6,6 +6,7 @@ namespace avadim\Manticore\QueryBuilder;
 
 use avadim\Manticore\QueryBuilder\Client\PDOClient;
 use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
+use Psr\Log\LoggerInterface;
 
 class Query
 {
@@ -14,7 +15,6 @@ class Query
     private string $prefix;
     private bool $forcePrefix = false;
 
-    private $logger = null;
     private $client;
     private Parser $parser;
     private array $indexPool = [];
@@ -39,10 +39,13 @@ class Query
 
     private QueryConditionSet $conditions;
 
+    private ?LoggerInterface $logger = null;
+    private array $logEnabled = [];
+
     /**
      * @param array $config
      * @param string|null $tableName
-     * @param $logger
+     * @param LoggerInterface|false|null $logger
      */
     public function __construct(array $config, ?string $tableName = null, $logger = null)
     {
@@ -53,9 +56,7 @@ class Query
         }
         $this->parser = new Parser($this->prefix);
         $this->schema = new SchemaTable();
-        if ($logger) {
-            $this->setLogger($logger);
-        }
+        $this->setLogger($logger);
 
         if (is_object($config['client'])) {
             $this->client = $config['client'];
@@ -70,14 +71,42 @@ class Query
         }
     }
 
-    public function setLogger($logger)
+    /**
+     * @param LoggerInterface|false|null $logger
+     *
+     * @return $this
+     */
+    public function setLogger($logger): Query
     {
-        $this->logger = $logger;
+        if ($logger) {
+            $this->logger = $logger;
+        }
+        elseif ($logger === false) {
+            $this->logger = null;
+        }
+
+        return $this;
     }
 
-    public function logger()
+    public function logger(): ?LoggerInterface
     {
         return $this->logger;
+    }
+
+    /**
+     * Logs with an arbitrary level.
+     *
+     * @param mixed $level
+     * @param string $message
+     * @param array $context
+     *
+     * @return void
+     */
+    protected function log($level, string $message, array $context = [])
+    {
+        if ($this->logger) {
+            $this->logger->log($level, $message, $context);
+        }
     }
 
     /**
@@ -244,136 +273,154 @@ class Query
 
     /**
      * @param array $parsedSql
+     * @param string|null $status
      *
-     * @return array
+     * @return ResultSet
      */
-    protected function _execQuery(array $parsedSql): array
+    protected function _execQuery(array $parsedSql, ?string $status = null): ResultSet
     {
         $index = $this->_sqlTable();
         if (!$index && !empty($parsedSql['table'])) {
             $this->table($parsedSql['table']);
         }
 
-        $time = microtime(true);
-        if ($parsedSql['command'] === 'INSERT') {
-            $response = $this->client->insert($parsedSql['query'], $this->params);
-        }
-        elseif ($parsedSql['command'] === 'SELECT') {
-            if (!$this->select) {
-                $query = 'SELECT id as _id, weight() as _score, ' . substr($parsedSql['query'], 6);
-            }
-            else {
-                $query = $parsedSql['query'];
-            }
-            $response = $this->client->select($query, $this->params);
-        }
-        else {
-            $response = $this->client->query($parsedSql['query'], $this->params);
-        }
-        $time = microtime(true) - $time;
-
         $result = [
             'command' => $parsedSql['command'],
             'query' => $parsedSql['query'],
-            'exec_time' => $time,
+            'exec_time' => 0.0,
+            'total_time' => 0.0,
         ];
+        $context = $parsedSql;
+        $context['params'] = $this->params;
+        $time = microtime(true);
+        try {
+            if ($parsedSql['command'] === 'INSERT') {
+                $response = $this->client->insert($parsedSql['query'], $this->params);
+            }
+            elseif ($parsedSql['command'] === 'SELECT') {
+                if (!$this->select) {
+                    $query = 'SELECT id as _id, weight() as _score, ' . substr($parsedSql['query'], 6);
+                }
+                else {
+                    $query = $parsedSql['query'];
+                }
+                $response = $this->client->select($query, $this->params);
+            }
+            else {
+                $response = $this->client->query($parsedSql['query'], $this->params);
+            }
 
-        if ($parsedSql['command'] === 'SHOW TABLES') {
-            $data = [];
-            foreach ($response['data'] as $n => $index) {
-                foreach ($index as $key => $val) {
-                    $data[$n][$key] = $val;
-                    if ($key === 'Index') {
-                        $data[$n]['Table'] = $val;
-                        if ($this->prefix && strpos($val, $this->prefix) === 0) {
-                            $name = '?' . substr($val, strlen($this->prefix));
-                        } else {
-                            $name = $val;
+            $result['exec_time'] = microtime(true) - $time;
+
+            $context['exec_time'] = $result['exec_time'];
+            $context['response'] = $response;
+            $this->log('info', 'Manticore Query:', $context);
+
+            if ($parsedSql['command'] === 'SHOW TABLES') {
+                $data = [];
+                foreach ($response['data'] as $n => $index) {
+                    foreach ($index as $key => $val) {
+                        $data[$n][$key] = $val;
+                        if ($key === 'Index') {
+                            $data[$n]['Table'] = $val;
+                            if ($this->prefix && strpos($val, $this->prefix) === 0) {
+                                $name = '?' . substr($val, strlen($this->prefix));
+                            } else {
+                                $name = $val;
+                            }
+                            $data[$n]['Name'] = $name;
                         }
-                        $data[$n]['Name'] = $name;
                     }
                 }
+                $result['result'] = [
+                    'type' => 'collection',
+                    'data' => $data,
+                ];
             }
-            $result['result'] = [
-                'type' => 'collection',
-                'data' => $data,
-            ];
-        }
-        elseif ($parsedSql['command'] === 'INSERT') {
-            $result['result'] = [
-                'type' => 'id',
-                'data' => $response['data'],
-                'status' => 'inserted',
-            ];
-        }
-        elseif ($parsedSql['command'] === 'SELECT') {
-            $result['result'] = [
-                'type' => 'collection',
-                'data' => !empty($response['data'][0]) ? $this->_castResult($response['data'][0]) : [],
-            ];
-            unset($response['data'][0]);
-            if (!empty($parsedSql['facets']) && $response['data']) {
-                $result['facets'] = [];
-                foreach ($parsedSql['facets'] as $n => $desc) {
-                    if (isset($response['data'][$n + 1])) {
-                        $data = $this->_castResult($response['data'][$n + 1]);
-                        foreach ($data as $dataKey => $dataSet) {
-                            if (isset($dataSet['count(*)'])) {
-                                $data[$dataKey]['_count'] = $dataSet['count(*)'];
+            elseif ($parsedSql['command'] === 'INSERT') {
+                $result['result'] = [
+                    'type' => 'id',
+                    'data' => $response['data'],
+                    'status' => 'inserted',
+                ];
+            }
+            elseif ($parsedSql['command'] === 'SELECT') {
+                $result['result'] = [
+                    'type' => 'collection',
+                    'data' => !empty($response['data'][0]) ? $this->_castResult($response['data'][0]) : [],
+                ];
+                unset($response['data'][0]);
+                if (!empty($parsedSql['facets']) && $response['data']) {
+                    $result['facets'] = [];
+                    foreach ($parsedSql['facets'] as $n => $desc) {
+                        if (isset($response['data'][$n + 1])) {
+                            $data = $this->_castResult($response['data'][$n + 1]);
+                            foreach ($data as $dataKey => $dataSet) {
+                                if (isset($dataSet['count(*)'])) {
+                                    $data[$dataKey]['_count'] = $dataSet['count(*)'];
+                                }
                             }
                         }
+                        else {
+                            $data = [];
+                        }
+                        $result['facets'][] = [
+                            'desc' => $desc,
+                            'data' => $data,
+                        ];
                     }
-                    else {
-                        $data = [];
-                    }
-                    $result['facets'][] = [
-                        'desc' => $desc,
-                        'data' => $data,
+                }
+                $meta = $this->client->select('SHOW META');
+                $result['meta'] = [];
+                foreach ($meta['data'][0] as $item) {
+                    $result['meta'][$item['Variable_name']] = $item['Value'];
+                }
+            }
+            elseif ($parsedSql['command'] === 'UPDATE') {
+                $result['result'] = [
+                    'type' => 'id',
+                    'data' => $response['count'],
+                    'status' => 'updated',
+                ];
+            }
+            elseif ($parsedSql['command'] === 'SHOW CREATE TABLE') {
+                $result['result'] = [
+                    'type' => 'array',
+                    'data' => $response['data'][0] ?? [],
+                ];
+            }
+            elseif ($response['data'] && is_array($response['data'])) {
+                $row = reset($response['data']);
+                if (array_key_first($response['data']) === 0 && is_array($row)) {
+                    $result['result'] = [
+                        'type' => 'collection',
+                        'data' => $response['data'],
+                    ];
+                }
+                else {
+                    $result['result'] = [
+                        'type' => 'array',
+                        'data' => $response['data'],
                     ];
                 }
             }
-            $meta = $this->client->select('SHOW META');
-            $result['meta'] = [];
-            foreach ($meta['data'][0] as $item) {
-                $result['meta'][$item['Variable_name']] = $item['Value'];
-            }
-        }
-        elseif ($parsedSql['command'] === 'UPDATE') {
-            $result['result'] = [
-                'type' => 'id',
-                'data' => $response['count'],
-                'status' => 'updated',
-            ];
-        }
-        elseif ($parsedSql['command'] === 'SHOW CREATE TABLE') {
-            $result['result'] = [
-                'type' => 'array',
-                'data' => $response['data'][0] ?? [],
-            ];
-        }
-        elseif ($response['data'] && is_array($response['data'])) {
-            $row = reset($response['data']);
-            if (array_key_first($response['data']) === 0 && is_array($row)) {
-                $result['result'] = [
-                    'type' => 'collection',
-                    'data' => $response['data'],
-                ];
-            }
             else {
                 $result['result'] = [
-                    'type' => 'array',
-                    'data' => $response['data'],
+                    'type' => 'bool',
+                    'data' => true,
                 ];
             }
         }
-        else {
-            $result['result'] = [
-                'type' => 'bool',
-                'data' => true,
-            ];
+        catch (\Throwable $e) {
+            $this->log('error', $e->getMessage(), $context);
+            $result['response']['error'] = $e->getMessage();
         }
 
-        return $result;
+        $result['total_time'] = microtime(true) - $time;
+        $resultSet = new ResultSet($result, $status);
+        $this->log('debug', 'Manticore Result:', $result);
+
+        return $resultSet;
     }
 
     /**
@@ -1339,9 +1386,8 @@ class Query
     public function exec(): ResultSet
     {
         $request = $this->parse();
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result);
+        return $this->_execQuery($request);
     }
 
     /**
@@ -1377,9 +1423,8 @@ class Query
         $this->command = 'DELETE';
 
         $request = $this->parse();
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result, 'deleted');
+        return $this->_execQuery($request, 'deleted');
     }
 
     /**
@@ -1411,9 +1456,8 @@ class Query
         $this->command = 'CREATE';
 
         $request = $this->parse();
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result, 'created');
+        return $this->_execQuery($request, 'created');
     }
 
     /**
@@ -1455,9 +1499,8 @@ class Query
             'query' => $sql,
             'original' => null,
         ];
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result, 'truncated');
+        return $this->_execQuery($request, 'truncated');
     }
 
     /**
@@ -1476,9 +1519,8 @@ class Query
             'query' => $sql,
             'original' => null,
         ];
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result, 'dropped');
+        return $this->_execQuery($request, 'dropped');
     }
 
     /**
@@ -1514,9 +1556,8 @@ class Query
             'query' => $sql,
             'original' => null,
         ];
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result);
+        return $this->_execQuery($request);
     }
 
     /**
@@ -1535,9 +1576,8 @@ class Query
             'query' => $sql,
             'original' => null,
         ];
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result);
+        return $this->_execQuery($request);
     }
 
     /**
@@ -1556,9 +1596,8 @@ class Query
             'query' => $sql,
             'original' => null,
         ];
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result);
+        return $this->_execQuery($request);
     }
 
     /**
@@ -1578,9 +1617,8 @@ class Query
             'query' => $sql,
             'original' => null,
         ];
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result);
+        return $this->_execQuery($request);
     }
 
     /**
@@ -1765,9 +1803,8 @@ class Query
         $this->update = $data;
 
         $request = $this->parse();
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result, 'inserted');
+        return $this->_execQuery($request, 'inserted');
     }
 
     /**
@@ -1785,9 +1822,8 @@ class Query
         }
 
         $request = $this->parse();
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result, 'updated');
+        return $this->_execQuery($request, 'updated');
     }
 
     /**
@@ -1806,9 +1842,8 @@ class Query
         }
 
         $request = $this->parse();
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($result, 'replaced');
+        return $this->_execQuery($request, 'replaced');
     }
 
 }

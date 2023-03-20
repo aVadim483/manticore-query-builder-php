@@ -2,13 +2,15 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Logger.php';
+
 use PHPUnit\Framework\TestCase;
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
 use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
 
 final class ManticoreQueryBuilderTest extends TestCase
 {
-    protected function getClientConfig()
+    protected function getClientConfig(): array
     {
         return [
             'defaultConnection' => 'test1',
@@ -556,6 +558,78 @@ final class ManticoreQueryBuilderTest extends TestCase
         $this->assertSame([5], array_values($res));
 
         ManticoreDb::table($table)->drop();
+    }
+
+    public function testLogger()
+    {
+        $t1 = 'test1_' . uniqid() . '_';
+        $t2 = 'test2_' . uniqid() . '_';
+        $config = $this->getClientConfig();
+        ManticoreDb::init($config);
+
+        $fields = [
+            'time' => 'timestamp',
+            'demo' => 'bool',
+            'country' => 'string',
+        ];
+        $insert = [
+            'time' => time(),
+            'demo' => true,
+            'country' => 'US',
+        ];
+
+        $logger = new \Logger();
+        ManticoreDb::table($t1)->drop(true);
+        ManticoreDb::connection('test2')->table($t2)->drop(true);
+
+        // without logging
+        $res = ManticoreDb::table($t1)->create($fields);
+        $res = ManticoreDb::connection('test2')->table($t2)->create($fields);
+        $this->assertSame('created', $res->status());
+        $this->assertSame([], $logger->data);
+
+        // enable logging
+        ManticoreDb::setLogger($logger);
+        ManticoreDb::table($t1)->insert($insert);
+        $this->assertSame('info', $logger->data[0]['level']);
+
+        $logger->reset();
+        ManticoreDb::connection('test2')->table($t2)->insert($insert);
+        $this->assertSame('info', $logger->data[0]['level']);
+
+        // disable logging
+        $logger->reset();
+        ManticoreDb::setLogger(false);
+        ManticoreDb::table($t1)->insert($insert);
+        $this->assertSame([], $logger->data);
+
+        ManticoreDb::connection('test2')->table($t2)->insert($insert);
+        $this->assertSame([], $logger->data);
+
+        // enable logging for 'default' and disable for 'test2'
+        $logger->reset();
+        ManticoreDb::setLogger($logger);
+        ManticoreDb::table($t1)->insert($insert);
+        $this->assertSame('info', $logger->data[0]['level']);
+
+        $logger->reset();
+        ManticoreDb::connection('test2')->setLogger(false)->table($t2)->insert($insert);
+        $this->assertSame([], $logger->data);
+
+        // enable logging for one request
+        $logger->reset();
+        ManticoreDb::setLogger(false);
+        ManticoreDb::table($t1)->insert($insert);
+        $this->assertSame([], $logger->data);
+
+        ManticoreDb::connection('test2')->table($t2)->insert($insert);
+        $this->assertSame([], $logger->data);
+
+        ManticoreDb::connection('test2')->table($t2)->setLogger($logger)->insert($insert);
+        $this->assertSame('info', $logger->data[0]['level']);
+
+        ManticoreDb::table($t1)->drop();
+        ManticoreDb::connection('test2')->table($t2)->drop();
     }
 
 }

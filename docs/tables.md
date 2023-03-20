@@ -12,6 +12,8 @@ Jump To:
 ## Create table
 
 ```php
+use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+
 // Raw SQL query
 $res = ManticoreDb::sql("create table products(title text, price float engine='columnar') engine='rowwise'")->exec();
 

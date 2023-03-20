@@ -8,4 +8,5 @@
 * [Searching](searching.md)
 * [Create, listing & Describe Tables](tables.md)
 * [ResultSet Class](result_set.md)
+* [Logging](logging.md)
 

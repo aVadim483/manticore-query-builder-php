@@ -1,3 +1,8 @@
+[![Latest Stable Version](http://poser.pugx.org/avadim/manticore-query-builder-php/v)](https://packagist.org/packages/avadim/manticore-query-builder-php) 
+[![Total Downloads](http://poser.pugx.org/avadim/manticore-query-builder-php/downloads)](https://packagist.org/packages/avadim/manticore-query-builder-php) 
+[![License](http://poser.pugx.org/avadim/manticore-query-builder-php/license)](https://packagist.org/packages/avadim/manticore-query-builder-php) 
+[![PHP Version Require](http://poser.pugx.org/avadim/manticore-query-builder-php/require/php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
+
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
 Query Builder for Manticore Search in PHP with Laravel-like syntax
@@ -11,12 +16,13 @@ Features
 * Support MATCH() and multi-level WHERE for SELECT
 * Support faceted search
 
-More detail documentation is available in [docs](/docs/README.md) folder.
+More detail documentation is available in [/docs](/docs/README.md) folder.
+Manticore Search server documentation: https://manual.manticoresearch.com/
 
 ## Quick start guide
 
 ```php
-use avadim\Manticore\QueryBuilder\QueryBuilder as ManticoreDb;
+use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
 
 // Define config
 $config = [

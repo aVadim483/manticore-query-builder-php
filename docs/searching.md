@@ -14,6 +14,8 @@ Jump To:
 ## Retrieving rows from a table
 
 ```php
+use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+
 // Returns object of ResultSet
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->exec();
 // $res->result() returns collection of rows

@@ -6,20 +6,43 @@ namespace avadim\Manticore\QueryBuilder;
 
 use avadim\Manticore\QueryBuilder\Client\PDOClient;
 use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
+use Psr\Log\LoggerInterface;
 
 class Connection
 {
     private array $config;
     private PDOClient $client;
     private ResultSet $lastResultSet;
+    private ?LoggerInterface $logger = null;
+    private array $logEnabled = [];
+
 
     /**
      * @param array $config
+     * @param LoggerInterface|null $logger
      */
-    public function __construct(array $config)
+    public function __construct(array $config, ?LoggerInterface $logger = null)
     {
         $this->config = $config;
         $this->client = new PDOClient($config);
+        $this->logger = $logger;
+    }
+
+    /**
+     * @param LoggerInterface|false|null $logger
+     *
+     * @return $this
+     */
+    public function setLogger($logger): Connection
+    {
+        if ($logger) {
+            $this->logger = $logger;
+        }
+        elseif ($logger === false) {
+            $this->logger = null;
+        }
+
+        return $this;
     }
 
     /**
@@ -32,7 +55,7 @@ class Connection
         $config = $this->config;
         $config['client'] = $this->client;
 
-        return new Query($config);
+        return new Query($config, null, $this->logger);
     }
 
     /**

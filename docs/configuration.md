@@ -3,6 +3,8 @@
 ## Configuration
 
 ```php
+use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+
 $config = [
     'defaultConnection' => 'default',
     'connections' => [

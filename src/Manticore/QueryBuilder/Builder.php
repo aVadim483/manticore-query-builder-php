@@ -6,12 +6,13 @@ namespace avadim\Manticore\QueryBuilder;
 
 use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
 use avadim\Manticore\QueryBuilder\ResultSet;
+use Psr\Log\LoggerInterface;
 
 class Builder
 {
     private static array $config;
     private static array $connections = [];
-    private static $logger = null;
+    private static ?LoggerInterface $logger = null;
 
     /**
      * @param array|null $config
@@ -48,6 +49,19 @@ class Builder
     }
 
     /**
+     * @param LoggerInterface|false|null $logger
+     *
+     * @return void
+     */
+    public static function setLogger($logger)
+    {
+        self::$logger = $logger ?: null;
+        foreach (self::$connections as $connection) {
+            $connection->setLogger($logger ?: false);
+        }
+    }
+
+    /**
      * @param string|null $connectionName
      *
      * @return Connection
@@ -65,6 +79,9 @@ class Builder
                 throw new \RuntimeException('The connection named "' . $connectionName . '" was not defined in the config');
             }
             self::$connections[$connectionName] = new Connection(self::$config['connections'][$connectionName]);
+            if (self::$logger) {
+                self::$connections[$connectionName]->setLogger(self::$logger);
+            }
         }
 
         return self::$connections[$connectionName];
