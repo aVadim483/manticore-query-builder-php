@@ -10,7 +10,7 @@ use Psr\Log\LoggerInterface;
 
 class Builder
 {
-    private static array $config;
+    private static array $config = [];
     private static array $connections = [];
     private static ?LoggerInterface $logger = null;
 
@@ -24,6 +24,7 @@ class Builder
     {
         self::$config = $config;
         self::$logger = $logger;
+        self::$connections = [];
     }
 
     /**
@@ -46,6 +47,14 @@ class Builder
                 ],
             ],
         ];
+    }
+
+    /**
+     * @return array
+     */
+    public static function currentConfig(): array
+    {
+        return self::$config;
     }
 
     /**

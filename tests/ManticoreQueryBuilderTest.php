@@ -28,11 +28,9 @@ final class ManticoreQueryBuilderTest extends TestCase
 
                 // Second connection which will use list of hosts and minimal settings
                 'test2'  => [
-                    'hosts' => [
-                        'host' => 'localhost',
-                        'port' => 9306,
-                        'prefix' => 'second_', // prefix that will replace the placeholder "?<table_name>"
-                    ],
+                    'host' => 'localhost',
+                    'port' => 9306,
+                    'prefix' => 'second_', // prefix that will replace the placeholder "?<table_name>"
                 ],
 
             ],
@@ -632,5 +630,60 @@ final class ManticoreQueryBuilderTest extends TestCase
         ManticoreDb::connection('test2')->table($t2)->drop();
     }
 
+    protected function dataPlaceholders(): array
+    {
+        return [
+            [
+                'create table ?products(title text, price float) morphology=\'stem_en\'',
+                'create table second_products(title text, price float) morphology=\'stem_en\'',
+                'create table products(title text, price float) morphology=\'stem_en\'',
+            ],
+            [
+                'insert into ?products(title,price) values (\'crossbody bag with tassel\', 19.85), (\'microfiber sheet set\', 19.99), (\'pet hair remover glove\', 7.99)',
+                'insert into second_products(title,price) values (\'crossbody bag with tassel\', 19.85), (\'microfiber sheet set\', 19.99), (\'pet hair remover glove\', 7.99)',
+                'insert into products(title,price) values (\'crossbody bag with tassel\', 19.85), (\'microfiber sheet set\', 19.99), (\'pet hair remover glove\', 7.99)',
+            ],
+            [
+                'select id, highlight(), price from ?products where match(\'remove hair\')',
+                'select id, highlight(), price from second_products where match(\'remove hair\')',
+                'select id, highlight(), price from products where match(\'remove hair\')',
+            ],
+            [
+                'update ?products set price=18.5 where id = 1513686608316989452',
+                'update second_products set price=18.5 where id = 1513686608316989452',
+                'update products set price=18.5 where id = 1513686608316989452',
+            ],
+            [
+                'delete from ?products where price < 10',
+                'delete from second_products where price < 10',
+                'delete from products where price < 10',
+            ],
+            [
+                'TRUNCATE TABLE ?products with reconfigure;',
+                'truncate table second_products with reconfigure',
+                'truncate table products with reconfigure',
+            ],
+        ];
+    }
+
+    public function testPlaceholders()
+    {
+        $config = $this->getClientConfig();
+        ManticoreDb::init($config);
+
+        $data = $this->dataPlaceholders();
+        foreach ($data as $pair) {
+            $res = mb_strtolower(ManticoreDb::connection('test2')->sql($pair[0])->toSql());
+            $this->assertSame($pair[1], $res);
+        }
+
+        $config['connections']['test2']['prefix'] = '';
+        ManticoreDb::init($config);
+
+        foreach ($data as $pair) {
+            $res = mb_strtolower(ManticoreDb::connection('test2')->sql($pair[0])->toSql());
+            $this->assertSame($pair[2], $res);
+        }
+    }
 }
 
