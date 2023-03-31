@@ -2,7 +2,7 @@
 
 ## Logging
 
-The Manticore Query Builder supports compatible PSR Loggers. There are several where DEBUG,INFO or ERROR messages are logged.
+The Manticore Query Builder supports compatible PSR Loggers. There are several where DEBUG, INFO or ERROR messages are logged.
 
 ### Enable logging
 

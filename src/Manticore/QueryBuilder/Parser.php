@@ -55,7 +55,7 @@ class Parser
             'query' => '',
         ];
 
-        if (!preg_match('#\?w+#', $query)) {
+        if (!preg_match('#\?\w+#', $query)) {
             $result['query'] = $query;
 
             return $result;
@@ -79,6 +79,7 @@ class Parser
                         if (preg_match('#^(?P<tables>[\w\.\?]+)(\s+(WHERE)\s+(?P<where>.+))?(\s+(GROUP\s+BY)\s+(?P<group>.+))?(\s+(ORDER\s+ BY)\s+(?P<order>.+))?(\s+(LIMIT)\s+(?P<limit>.+))?(\s+(OPTION)\s+(?P<option>.+))?$#siU', $exp1, $mp)) {
                             $result['table'] = $this->_formatTables($mp['tables']);
                             $parts[] = $result['table'];
+                            $exp1 = null;
                         }
                     }
 

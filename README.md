@@ -91,6 +91,10 @@ $res = ManticoreDb::table('?products')->insert($multipleRows);
 $rows = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get();
 ```
 
-More detail documentation is available in [docs](/docs/README.md) folder.
+## Documentation
 
+More detail documentation is available in [/docs](/docs/README.md) folder.
 
+## Want to support?
+
+if you find this package useful  just give me a star on [GitHub](https://github.com/aVadim483/manticore-query-builder-php) :)
