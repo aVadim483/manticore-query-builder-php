@@ -57,6 +57,9 @@ class Parser
 
         if (!preg_match('#\?\w+#', $query)) {
             $result['query'] = $query;
+            if ($command === 'SELECT' && preg_match('#^SELECT\s+(?P<select>.+)\s+FROM\s+(?P<from>\w+)#si', $query, $m)) {
+                $result['table'] = $m['from'];
+            }
 
             return $result;
         }

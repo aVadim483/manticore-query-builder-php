@@ -11,6 +11,7 @@ class ResultSet
     private ?string $command;
     private ?string $sqlQuery;
     private ?string $status = '';
+    private ?string $error = null;
     private ?float $execTime;
     private array $meta;
     private array $facets;
@@ -61,6 +62,7 @@ class ResultSet
 
         if (!empty($data['response']['error'])) {
             $this->status = 'error';
+            $this->error = $data['response']['error'];
         }
         elseif ($status) {
             $this->status = $status;

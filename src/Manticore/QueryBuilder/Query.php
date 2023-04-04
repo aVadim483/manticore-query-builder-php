@@ -373,7 +373,16 @@ class Query
                 $meta = $this->client->select('SHOW META');
                 $result['meta'] = [];
                 foreach ($meta['data'][0] as $item) {
-                    $result['meta'][$item['Variable_name']] = $item['Value'];
+                    if ($item['Variable_name'] === 'time') {
+                        $value = (float)$item['Value'];
+                    }
+                    elseif ($item['Variable_name'] === 'total' || $item['Variable_name'] === 'total_found' || in_array(substr($item['Variable_name'], 0, 5), ['docs[', 'hits['])) {
+                        $value = (int)$item['Value'];
+                    }
+                    else {
+                        $value = $item['Value'];
+                    }
+                    $result['meta'][$item['Variable_name']] = $value;
                 }
             }
             elseif ($parsedSql['command'] === 'UPDATE') {
@@ -880,7 +889,7 @@ class Query
             if (!empty($this->highlight['options'])) {
                 $options = [];
                 foreach ($this->highlight['options'] as $key => $val) {
-                    $options[] = $key . '=' . self::escapeParam($val);
+                    $options[] = $key . '=\'' . self::escapeParam($val) . '\'';
                 }
                 $highlight .= '{' . implode(',', $options) . '}';
             }
