@@ -148,7 +148,7 @@ class ResultSet
      */
     public function count(): int
     {
-        return $this->meta['total'] ? (int)$this->meta['total'] : 0;
+        return isset($this->meta['total']) ? (int)$this->meta['total'] : 0;
     }
 
     /**
@@ -158,7 +158,7 @@ class ResultSet
      */
     public function total(): int
     {
-        return $this->meta['total_found'] ? (int)$this->meta['total_found'] : 0;
+        return isset($this->meta['total_found']) ? (int)$this->meta['total_found'] : 0;
     }
 
     /**

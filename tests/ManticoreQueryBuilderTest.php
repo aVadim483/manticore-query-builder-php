@@ -225,6 +225,11 @@ final class ManticoreQueryBuilderTest extends TestCase
         $result = ManticoreDb::table($table)->where('DOUBLE(metadata.price)>250')->count();
         $this->assertEquals(2, $result);
 
+        $result = ManticoreDb::table($table)->where('DOUBLE(metadata.price)>:price')
+            ->bind([':price' => 250])
+            ->count();
+        $this->assertEquals(2, $result);
+
         $result = ManticoreDb::table($table)->where('metadata.cpu.model', 'Kyro 345')->count();
         $this->assertEquals(1, $result);
 
@@ -251,7 +256,10 @@ final class ManticoreQueryBuilderTest extends TestCase
         $this->assertEquals('2016', $result[1]['g']);
         $this->assertEquals(2, $result[1]['c']);
 
-        $result = ManticoreDb::table($table)->select(['*', 'IN(metadata.color, :black, :white) as color_filter'])->where('color_filter=1')->bind([':black' => 'black', ':white' => 'white'])->get();
+        $result = ManticoreDb::table($table)->select(['*', 'IN(metadata.color, :black, :white) as color_filter'])
+            ->where('color_filter=1')
+            ->bind([':black' => 'black', ':white' => 'white'])
+            ->get();
         $this->assertCount(3, $result);
 
         ManticoreDb::table($table)->drop();
