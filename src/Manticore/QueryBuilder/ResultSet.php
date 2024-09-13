@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace avadim\Manticore\QueryBuilder;
 
-use Illuminate\Support\Collection;
 
 class ResultSet
 {
@@ -37,12 +36,7 @@ class ResultSet
         $this->resultType = $data['result']['type'] ?? '';
         $this->resultData = $data['result']['data'] ?? null;
         if ($this->resultType === 'collection' || $this->resultType === 'array') {
-            if (is_array($this->resultData)) {
-                $row = reset($this->resultData);
-            }
-            else {
-                $row = $this->first();
-            }
+            $row = $this->first();
             $this->columns = ($row && is_array($row)) ? array_keys($row) : [];
             foreach ($this->resultData as $item) {
                 if (isset($item['Variable_name'], $item['Value'])) {
@@ -176,7 +170,7 @@ class ResultSet
             if (is_array($this->resultData)) {
                 return reset($this->resultData);
             }
-            elseif ($this->resultData instanceof Collection) {
+            elseif (is_object($this->resultData) && method_exists($this->resultData, 'first')) {
                 return $this->resultData->first();
             }
         }
