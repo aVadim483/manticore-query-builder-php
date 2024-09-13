@@ -94,21 +94,45 @@ class Connection
 
     /**
      * @param string $name
+     *
+     * @return bool
+     */
+    public function hasTable(string $name): bool
+    {
+        return $this->query()->hasTable($name);
+    }
+    /**
+     * @param string $name
      * @param array|SchemaTable|callable $schema
      * @param array|null $options
+     * @param bool|null $ifNotExists
      *
      * @return ResultSet
      */
-    public function create(string $name, $schema, ?array $options = []): ResultSet
+    public function create(string $name, $schema, ?array $options = [], ?bool $ifNotExists = false): ResultSet
     {
         $query = $this->query()->table($name);
         if ($options) {
             $query->options($options);
         }
 
+        if ($ifNotExists) {
+            $query->ifNotExists();
+        }
         $this->lastResultSet = $query->create($schema);
 
         return $this->lastResultSet;
+    }
+
+    /**
+     * @param string $name
+     * @param bool|null $ifExists
+     *
+     * @return ResultSet
+     */
+    public function drop(string $name, ?bool $ifExists = false): ResultSet
+    {
+        return $this->query()->table($name)->drop($ifExists);
     }
 
     /**

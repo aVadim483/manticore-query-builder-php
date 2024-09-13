@@ -14,6 +14,7 @@ class Builder
     private static array $connections = [];
     private static ?LoggerInterface $logger = null;
 
+
     /**
      * @param array|null $config
      * @param $logger
@@ -130,6 +131,16 @@ class Builder
 
     /**
      * @param string $name
+     *
+     * @return bool
+     */
+    public static function hasTable(string $name): bool
+    {
+        return self::connection()->hasTable($name);
+    }
+
+    /**
+     * @param string $name
      * @param array|SchemaTable|callable $schema
      * @param array|null $options
      *
@@ -138,6 +149,39 @@ class Builder
     public static function create(string $name, $schema, ?array $options = []): ResultSet
     {
         return self::connection()->create($name, $schema, $options);
+    }
+
+    /**
+     * @param string $name
+     * @param array|SchemaTable|callable $schema
+     * @param array|null $options
+     *
+     * @return ResultSet
+     */
+    public static function createIfNotExists(string $name, $schema, ?array $options = []): ResultSet
+    {
+        return self::connection()->create($name, $schema, $options, true);
+    }
+
+    /**
+     * @param string $name
+     * @param bool|null $ifExists
+     *
+     * @return ResultSet
+     */
+    public static function drop(string $name, ?bool $ifExists = false): ResultSet
+    {
+        return self::connection()->drop($name, $ifExists);
+    }
+
+    /**
+     * @param string $name
+     *
+     * @return ResultSet
+     */
+    public static function dropIfExists(string $name): ResultSet
+    {
+        return self::connection()->drop($name, true);
     }
 
     /**

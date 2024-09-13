@@ -36,6 +36,7 @@ class Query
     private array $facets = [];
     private array $highlight = [];
     private array $params = [];
+    private bool $ifNotExists = false;
 
     private QueryConditionSet $conditions;
 
@@ -1149,7 +1150,7 @@ class Query
         }
 
         elseif ($this->command === 'CREATE') {
-            $sql = 'CREATE TABLE ' . $this->_sqlTable() . $this->_sqlSchema();
+            $sql = 'CREATE TABLE ' . ($this->ifNotExists ? 'IF NOT EXISTS ' : '') . $this->_sqlTable() . $this->_sqlSchema();
         }
 
         else {
@@ -1390,6 +1391,16 @@ class Query
     }
 
     /**
+     * @return $this
+     */
+    public function ifNotExists(): Query
+    {
+        $this->ifNotExists = true;
+
+        return $this;
+    }
+
+    /**
      * @return ResultSet
      */
     public function exec(): ResultSet
@@ -1437,6 +1448,18 @@ class Query
     }
 
     /**
+     * @param string $name
+     *
+     * @return bool
+     */
+    public function hasTable(string $name): bool
+    {
+        $res = $this->showTables($name)->result();
+
+        return !empty($res);
+    }
+
+    /**
      * create('tableName', [..])
      * create('tableName', function(SchemaTable $table) {..})
      * table('tableName')->create([..])
@@ -1456,10 +1479,10 @@ class Query
             $schema = $name;
         }
         $this->schema($schema);
-        if ($this->table['options']) {
+        if (!empty($this->table['options'])) {
             $this->schema->tableOptions($this->table['options']);
         }
-        if ($this->table['engine']) {
+        if (!empty($this->table['engine'])) {
             $this->schema->tableEngine($this->table['engine']);
         }
         $this->command = 'CREATE';
@@ -1487,9 +1510,8 @@ class Query
         // 4. alter add column
 
         $request = $this->parse();
-        $result = $this->_execQuery($request);
 
-        return new ResultSet($this->_execQuery($result));
+        return $this->_execQuery($request);
     }
 
     /**

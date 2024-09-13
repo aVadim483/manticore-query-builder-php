@@ -6,8 +6,8 @@ Jump To:
 * [SHOW TABLES](#show-tables)
 * [SHOW CREATE TABLE](#show-create-table)
 * [DESCRIBE TABLE](#describe-table)
-* [SHOW TABLE STATUS](#show-table--tablename--status)
-* [SHOW TABLE SETTINGS](#show-table--tablename--settings)
+* [SHOW TABLE STATUS](#show-table-table_name-status)
+* [SHOW TABLE SETTINGS](#show-table-table_name-settings)
 
 ## Create table
 
@@ -58,8 +58,13 @@ $options = [
     'html_strip' => 1, 
     'html_index_attrs' => 'img=alt,title; a=title;'
 ];
-$res = ManticoreDb::create('demo_test', $fields, $options);
 $res = ManticoreDb::table('demo_test')->options($options)->create($fields);
+$res = ManticoreDb::create('demo_test', $fields, $options);
+
+$res = ManticoreDb::createIfNotExists('demo_test', $fields, $options);
+if (!ManticoreDb::hasTable('demo_test') {
+$res = ManticoreDb::create('demo_test', $fields, $options);
+}
 ```
 
 ## Drop tables
@@ -68,6 +73,8 @@ $res = ManticoreDb::table('demo_test')->options($options)->create($fields);
 $res = ManticoreDb::table('test')->drop();
 $res = ManticoreDb::table('test')->dropIfExists();
 
+$res = ManticoreDb::drop('test');
+$res = ManticoreDb::dropIfExists('test');
 ```
 
 ## Listing tables

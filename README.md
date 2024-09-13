@@ -1,7 +1,7 @@
-[![Latest Stable Version](http://poser.pugx.org/avadim/manticore-query-builder-php/v)](https://packagist.org/packages/avadim/manticore-query-builder-php) 
-[![Total Downloads](http://poser.pugx.org/avadim/manticore-query-builder-php/downloads)](https://packagist.org/packages/avadim/manticore-query-builder-php) 
-[![License](http://poser.pugx.org/avadim/manticore-query-builder-php/license)](https://packagist.org/packages/avadim/manticore-query-builder-php) 
-[![PHP Version Require](http://poser.pugx.org/avadim/manticore-query-builder-php/require/php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
+[![GitHub Release](https://img.shields.io/github/v/release/aVadim483/manticore-query-builder-php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
+[![Packagist Downloads](https://img.shields.io/packagist/dt/avadim/manticore-query-builder-php?color=%23aa00aa)](https://packagist.org/packages/avadim/manticore-query-builder-php)
+[![GitHub License](https://img.shields.io/github/license/aVadim483/manticore-query-builder-php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
+[![Static Badge](https://img.shields.io/badge/php-%3E%3D7.4-005fc7)](https://packagist.org/packages/avadim/manticore-query-builder-php)
 
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 

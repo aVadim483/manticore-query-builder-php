@@ -40,8 +40,94 @@ final class ManticoreQueryBuilderTest extends TestCase
 
     public function testCreateAndDrop()
     {
-        $prefix1 = 'test1_' . uniqid() . '_';
-        $prefix2 = 'test2_' . uniqid() . '_';
+        $table = 'test1_' . uniqid() . '_products';
+        $config = $this->getClientConfig();
+
+        ManticoreDb::init($config);
+
+        $fields = [
+            'created_at' => 'timestamp',
+            'manufacturer' => 'string',
+            'title' => 'text',
+            'info' => 'json',
+            'price' => ['type' => 'float'],
+            'categories' => 'multi',
+            'on_sale' => 'bool',
+        ];
+
+        $options = [
+            'charset_table' => 'cjk',
+            'morphology' => 'icu_chinese',
+        ];
+
+        $res = ManticoreDb::drop($table);
+        $this->assertFalse($res->success());
+
+        $res = ManticoreDb::dropIfExists($table);
+        $this->assertTrue($res->success());
+
+        $res = ManticoreDb::table($table)->options($options)->create($fields);
+        $this->assertTrue($res->result());
+
+        $res = ManticoreDb::tableSettings($table);
+        $this->assertEquals('cjk', $res['charset_table']);
+        $this->assertEquals('icu_chinese', $res['morphology']);
+
+        $res = ManticoreDb::tableStatus($table);
+        $this->assertEquals('rt', $res['index_type']);
+        $this->assertEquals(0, $res['indexed_documents']);
+
+        $res = ManticoreDb::tableDescribe($table);
+        foreach ($res as $col => $data) {
+            if ($col === 'id') {
+                $this->assertEquals('bigint', $data['Type']);
+            }
+            else {
+                $type = (is_array($fields[$col]) ? $fields[$col]['type'] : $fields[$col]);
+                $this->assertEquals($type === 'multi' ? 'mva' : $type, $data['Type']);
+            }
+        }
+
+        $res = ManticoreDb::showTables($table);
+        $this->assertEquals($table, $res[0]['Index']);
+        $this->assertEquals($table, $res[0]['Table']);
+        $this->assertEquals($table, $res[0]['Name']);
+        $this->assertEquals('rt', $res[0]['Type']);
+
+        $insertData = [
+            [
+                'created_at' => time(),
+                'manufacturer' => 'Samsung',
+                'title' => 'Galaxy S23 Ultra',
+                'info' => ['color' => 'Red', 'storage' => 512],
+                'price' => 1199.00,
+                'categories' => [5, 7, 11],
+                'on_sale' => true,
+            ],
+            [
+                'created_at' => time(),
+                'manufacturer' => 'Xiaomi',
+                'title' => 'Redmi 12C',
+                'info' => ['color' => 'Green', 'storage' => 256],
+                'price' => 988.99,
+                'categories' => [1, 7, 9],
+                'on_sale' => false,
+            ],
+        ];
+        foreach ($insertData as $record) {
+            $res = ManticoreDb::table($table)->insert($record);
+            $this->assertTrue(is_int($res->result()));
+        }
+
+        $res = ManticoreDb::table($table)->drop();
+        $this->assertTrue($res->result());
+    }
+
+
+    public function testCreateAndDropWithPrefix()
+    {
+        $prefix1 = 'conn1_' . uniqid() . '_';
+        $prefix2 = 'conn2_' . uniqid() . '_';
         $config = $this->getClientConfig();
         $config['connections']['test1']['prefix'] = $prefix1;
         $config['connections']['test2']['prefix'] = $prefix2;
@@ -165,9 +251,10 @@ final class ManticoreQueryBuilderTest extends TestCase
         $this->assertTrue($res->result());
     }
 
+
     public function testJson()
     {
-        $table = 'test1_' . uniqid();
+        $table = 'test2_' . uniqid() . '_json';
         ManticoreDb::table($table)->drop(true);
         ManticoreDb::table($table)->create([
             'name' => 'string',
@@ -265,6 +352,7 @@ final class ManticoreQueryBuilderTest extends TestCase
         ManticoreDb::table($table)->drop();
     }
 
+
     protected function dataFullText(): array
     {
         $i = 1;
@@ -342,6 +430,7 @@ final class ManticoreQueryBuilderTest extends TestCase
         ];
     }
 
+
     public function testFullText()
     {
         $table = 'test1_' . uniqid();
@@ -388,6 +477,7 @@ final class ManticoreQueryBuilderTest extends TestCase
 
         ManticoreDb::table($table)->drop();
     }
+
 
     protected function dataWhere(): array
     {
@@ -487,6 +577,7 @@ final class ManticoreQueryBuilderTest extends TestCase
         return ['fields' => $fields, 'inserts' => $inserts];
     }
 
+
     public function testWhere()
     {
         $data = $this->dataWhere();;
@@ -566,6 +657,7 @@ final class ManticoreQueryBuilderTest extends TestCase
         ManticoreDb::table($table)->drop();
     }
 
+
     public function testLogger()
     {
         $t1 = 'test1_' . uniqid() . '_';
@@ -637,6 +729,7 @@ final class ManticoreQueryBuilderTest extends TestCase
         ManticoreDb::table($t1)->drop();
         ManticoreDb::connection('test2')->table($t2)->drop();
     }
+
 
     protected function dataPlaceholders(): array
     {

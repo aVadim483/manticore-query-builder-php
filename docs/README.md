@@ -6,7 +6,7 @@
 
 * [Configuration](configuration.md)
 * [Searching](searching.md)
-* [Create, listing & Describe Tables](tables.md)
+* [Create, Listing & Describe Tables](tables.md)
 * [ResultSet Class](result_set.md)
 * [Logging](logging.md)
 

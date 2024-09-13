@@ -60,7 +60,11 @@ class ResultSet
             $this->columns = [];
         }
 
-        if (!empty($data['response']['error'])) {
+        if (!empty($data['response']['warning'])) {
+            $this->status = 'warning';
+            $this->error = $data['response']['warning'];
+        }
+        elseif (!empty($data['response']['error'])) {
             $this->status = 'error';
             $this->error = $data['response']['error'];
         }
@@ -224,7 +228,17 @@ class ResultSet
      */
     public function success(): bool
     {
-        return empty($this->data['response']['error']) && empty($this->data['response']['warning']);
+        return $this->error === null;
+    }
+
+    /**
+     * Text of warning or error
+     *
+     * @return string|null
+     */
+    public function error(): ?string
+    {
+        return $this->error;
     }
 
     /**

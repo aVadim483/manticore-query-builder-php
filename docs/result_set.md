@@ -15,8 +15,11 @@ Returns a command ('SELECT', 'INSERT', 'SHOW TABLES', etc)
 ### sqlQuery(): ?string
 Returns SQL query
 
-### public function execTime(): ?float
+### execTime(): ?float
 Returns execution time
+
+### error(): ?string
+Returns text of error or warning of last query
 
 ### success(): bool
 Result without errors and warnings
