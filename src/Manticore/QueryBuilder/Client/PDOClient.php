@@ -16,7 +16,7 @@ class PDOClient
      * @param array|null $config
      * @param LoggerInterface|null $logger
      */
-    public function __construct(?array $config = [], LoggerInterface $logger = null)
+    public function __construct(?array $config = [], ?LoggerInterface $logger = null)
     {
         $this->config = $config;
         if (isset($this->config['dsn'])) {

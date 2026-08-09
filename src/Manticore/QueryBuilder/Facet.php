@@ -97,11 +97,21 @@ class Facet
      */
     public function limit($param1, ?int $param2 = null): Facet
     {
+        if (is_array($param1)) {
+            // limit([<limit>]) or limit([<offset>, <limit>])
+            $args = array_values($param1);
+            if (!$args) {
+                return $this;
+            }
+            $param1 = (int)$args[0];
+            $param2 = isset($args[1]) ? (int)$args[1] : $param2;
+        }
+
         if ($param2 === null) {
-            $this->limit = [$param1, null];
+            $this->limit = [(int)$param1, null];
         }
         else {
-            $this->limit = [$param2, $param1];
+            $this->limit = [$param2, (int)$param1];
         }
 
         return $this;

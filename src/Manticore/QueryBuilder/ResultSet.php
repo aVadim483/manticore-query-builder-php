@@ -195,7 +195,7 @@ class ResultSet
      *
      * @return array
      */
-    public function facets(int $key = null): array
+    public function facets(?int $key = null): array
     {
         $facets = $this->facets ? array_column($this->facets, 'data') : [];
         if ($key === null) {

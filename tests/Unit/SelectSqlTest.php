@@ -91,6 +91,24 @@ final class SelectSqlTest extends UnitTestCase
         );
     }
 
+    public function testLimitFromArray(): void
+    {
+        // limit([<limit>]) and limit([<offset>, <limit>]) mirror the scalar forms
+        $this->assertSqlSame(
+            'SELECT * FROM products LIMIT 10',
+            $this->query()->limit([10])->toSql()
+        );
+        $this->assertSqlSame(
+            'SELECT * FROM products LIMIT 5,10',
+            $this->query()->limit([5, 10])->toSql()
+        );
+    }
+
+    public function testEmptyLimitArrayIsIgnored(): void
+    {
+        $this->assertSqlSame('SELECT * FROM products', $this->query()->limit([])->toSql());
+    }
+
     public function testOffsetWithoutLimitRendersNothing(): void
     {
         // "LIMIT <offset>," is not valid SQL on its own

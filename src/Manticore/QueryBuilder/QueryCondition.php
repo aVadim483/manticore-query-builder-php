@@ -18,7 +18,7 @@ class QueryCondition
      * @param string|array|mixed|null $arg
      * @param int|null $level
      */
-    public function __construct(string $bool, $operand, string $op = null, $arg = null, ?int $level = 0)
+    public function __construct(string $bool, $operand, ?string $op = null, $arg = null, ?int $level = 0)
     {
         $this->level = $level;
         $this->bool = $bool;
