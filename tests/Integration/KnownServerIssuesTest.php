@@ -47,28 +47,6 @@ final class KnownServerIssuesTest extends IntegrationTestCase
     }
 
     /**
-     * _execQuery() builds the "Table" and "Name" columns of SHOW TABLES (the latter maps the
-     * prefix back to "?name") inside "if ($key === 'Index')". Current Manticore versions return
-     * a "Table" column instead of "Index", so neither is produced any more.
-     */
-    public function testShowTablesMapsPrefixBackToPlaceholder(): void
-    {
-        $this->markTestIncomplete('SHOW TABLES no longer returns an "Index" column, so the "Name" mapping is skipped');
-
-        $config = $this->config();
-        $prefix = 'issue_' . str_replace('.', '', uniqid('', true)) . '_';
-        $config['connections'][self::CONNECTION_1]['prefix'] = $prefix;
-        ManticoreDb::init($config);
-        $this->registerTable('?products');
-
-        ManticoreDb::table('?products')->create(['title' => 'text']);
-
-        $row = ManticoreDb::showTables('?%')[0];
-        $this->assertSame($prefix . 'products', $row['Table']);
-        $this->assertSame('?products', $row['Name']);
-    }
-
-    /**
      * Connection::showVariables() is typed ": array" but returns ResultSet::result(), which is
      * boolean true when the server answers with an empty set - a TypeError instead of an
      * empty array.

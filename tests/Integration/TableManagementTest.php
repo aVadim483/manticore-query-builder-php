@@ -165,8 +165,19 @@ final class TableManagementTest extends IntegrationTestCase
         $tables = ManticoreDb::showTables($table);
 
         $this->assertCount(1, $tables);
-        $this->assertSame($table, $tables[0]['Table']);
         $this->assertSame('rt', $tables[0]['Type']);
+        // "Index" is the pre-6.0 name of the column, "Table" the current one - both are reported
+        $this->assertSame($table, $tables[0]['Index']);
+        $this->assertSame($table, $tables[0]['Table']);
+    }
+
+    public function testShowTablesKeepsRealNameWhenItHasNoPrefix(): void
+    {
+        $table = $this->createTable(['title' => 'text'], 'noprefix');
+
+        $tables = ManticoreDb::showTables($table);
+
+        $this->assertSame($table, $tables[0]['Name']);
     }
 
     public function testHasTableIsFalseForMissingTable(): void

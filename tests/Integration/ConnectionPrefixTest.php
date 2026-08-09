@@ -109,6 +109,38 @@ final class ConnectionPrefixTest extends IntegrationTestCase
         $this->assertContains($this->prefix1 . 'products', $tables);
     }
 
+    /**
+     * The other half of the placeholder mechanics: the listing must be readable in the same
+     * terms the code is written in, so the prefix is mapped back into "?name".
+     */
+    public function testShowTablesMapsPrefixBackToPlaceholder(): void
+    {
+        ManticoreDb::table('?products')->create($this->fields());
+
+        $rows = ManticoreDb::showTables('?%');
+        $row = null;
+        foreach ($rows as $candidate) {
+            if ($candidate['Table'] === $this->prefix1 . 'products') {
+                $row = $candidate;
+                break;
+            }
+        }
+
+        $this->assertNotNull($row, 'the created table must be listed');
+        $this->assertSame($this->prefix1 . 'products', $row['Index']);
+        $this->assertSame($this->prefix1 . 'products', $row['Table']);
+        $this->assertSame('?products', $row['Name']);
+    }
+
+    public function testShowTablesOfSecondConnectionMapsItsOwnPrefix(): void
+    {
+        ManticoreDb::connection(self::CONNECTION_2)->table('?products')->create($this->fields());
+
+        $names = array_column(ManticoreDb::connection(self::CONNECTION_2)->showTables('?%'), 'Name', 'Table');
+
+        $this->assertSame('?products', $names[$this->prefix2 . 'products']);
+    }
+
     public function testShowTablesOfSecondConnectionUsesItsOwnPrefix(): void
     {
         ManticoreDb::connection(self::CONNECTION_2)->table('?products')->create($this->fields());

@@ -333,19 +333,20 @@ class Query
 
             if ($parsedSql['command'] === 'SHOW TABLES') {
                 $data = [];
-                foreach ($response['data'] as $n => $index) {
-                    foreach ($index as $key => $val) {
-                        $data[$n][$key] = $val;
-                        if ($key === 'Index') {
-                            $data[$n]['Table'] = $val;
-                            if ($this->prefix && strpos($val, $this->prefix) === 0) {
-                                $name = '?' . substr($val, strlen($this->prefix));
-                            } else {
-                                $name = $val;
-                            }
-                            $data[$n]['Name'] = $name;
-                        }
+                foreach ($response['data'] as $n => $row) {
+                    // Manticore used to call this column "Index" and calls it "Table" since v6;
+                    // both are reported back, together with "Name" - the logical name, i.e. the
+                    // one with the prefix mapped back to the "?table" placeholder
+                    $tableName = $row['Index'] ?? ($row['Table'] ?? null);
+                    $names = [];
+                    if ($tableName !== null) {
+                        $names['Index'] = $tableName;
+                        $names['Table'] = $tableName;
+                        $names['Name'] = ($this->prefix && strpos($tableName, $this->prefix) === 0)
+                            ? '?' . substr($tableName, strlen($this->prefix))
+                            : $tableName;
                     }
+                    $data[$n] = array_merge($names, $row);
                 }
                 $result['result'] = [
                     'type' => 'collection',
