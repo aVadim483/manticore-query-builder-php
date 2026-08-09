@@ -106,15 +106,26 @@ final class TypeCastingTest extends IntegrationTestCase
         $this->assertSame([5, 7, 11], $row['categories']);
     }
 
-    public function testMulti64IsWrittenCorrectly(): void
+    public function testMulti64IsReadAsIntArray(): void
     {
-        // reading multi64 back as an array is broken, see KnownServerIssuesTest
         $row = $this->roundTrip(['title' => 'x', 'values' => [PHP_INT_MIN, 0, PHP_INT_MAX]]);
 
-        $this->assertSame(
-            [PHP_INT_MIN, 0, PHP_INT_MAX],
-            array_map('intval', explode(',', (string)$row['values']))
-        );
+        $this->assertSame([PHP_INT_MIN, 0, PHP_INT_MAX], $row['values']);
+    }
+
+    public function testEmptyMultiIsReadAsEmptyArray(): void
+    {
+        $row = $this->roundTrip(['title' => 'x', 'categories' => [], 'values' => []]);
+
+        $this->assertSame([], $row['categories']);
+        $this->assertSame([], $row['values']);
+    }
+
+    public function testMultiIsEmptyWhenColumnWasNotWritten(): void
+    {
+        $row = $this->roundTrip(['title' => 'x']);
+
+        $this->assertSame([], $row['categories']);
     }
 
     public function testMultiIsQueryable(): void

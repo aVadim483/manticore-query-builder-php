@@ -229,6 +229,8 @@ class Query
                             break;
                         case 'bigint':
                         case 'integer':
+                        // DESCRIBE reports an integer column as "uint"
+                        case 'uint':
                         case 'timestamp':
                             $row[$col] = (int)$val;
                             break;
@@ -238,11 +240,11 @@ class Query
                         case 'multi':
                         case 'multi64':
                         case 'mva':
-                            $arr = [];
-                            foreach (explode(',', $val) as $item) {
-                                $arr[] = (int)$item;
-                            }
-                            $row[$col] = $arr;
+                        // DESCRIBE reports a multi64 column as "mva64"
+                        case 'mva64':
+                            $val = (string)$val;
+                            // an empty attribute is an empty list, not a list holding one zero
+                            $row[$col] = ($val === '') ? [] : array_map('intval', explode(',', $val));
                         break;
                         case 'json':
                             $row[$col] = $val ? json_decode($val, true) : [];
