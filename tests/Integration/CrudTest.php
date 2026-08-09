@@ -77,6 +77,14 @@ final class CrudTest extends IntegrationTestCase
         $this->assertSame(3, ManticoreDb::table($this->table)->count());
     }
 
+    public function testInsertWithExplicitIdArgument(): void
+    {
+        $result = ManticoreDb::table($this->table)->insert($this->row(), 600);
+
+        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertNotNull(ManticoreDb::table($this->table)->find(600));
+    }
+
     public function testInsertMultipleRowsWithDifferentColumnSets(): void
     {
         $result = ManticoreDb::table($this->table)->insert([

@@ -98,11 +98,39 @@ final class PlaceholderTest extends UnitTestCase
 
     public function testPlaceholderInBackticksIsResolvedByTableMethod(): void
     {
-        // the builder path understands backticks (Parser::resolveTableName);
-        // for raw SQL see KnownIssuesTest::testRawSqlResolvesBacktickedPlaceholder()
         $sql = $this->query('`?products`', [], ['prefix' => 'second_'])->select()->toSql();
 
         $this->assertSame('select * from `second_products`', mb_strtolower($sql));
+    }
+
+    /**
+     * @dataProvider backtickedSqlProvider
+     *
+     * @param string $source
+     * @param string $expected
+     */
+    public function testPlaceholderInBackticksIsResolvedInRawSql(string $source, string $expected): void
+    {
+        $sql = $this->query(null, [], ['prefix' => 'second_'])->sql($source)->toSql();
+
+        $this->assertSame($expected, mb_strtolower($sql));
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public function backtickedSqlProvider(): array
+    {
+        return [
+            'select' => ['select * from `?products` where id=1', 'select * from `second_products` where id=1'],
+            'delete' => ['delete from `?products` where id=1', 'delete from `second_products` where id=1'],
+            'insert' => [
+                'insert into `?products`(title) values (\'a\')',
+                'insert into `second_products`(title) values (\'a\')',
+            ],
+            'update' => ['update `?products` set price=1', 'update `second_products` set price=1'],
+            'create' => ['create table `?products`(title text)', 'create table `second_products`(title text)'],
+        ];
     }
 
     public function testQueryWithoutPlaceholderIsLeftAlone(): void

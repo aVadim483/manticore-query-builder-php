@@ -122,6 +122,25 @@ class Query
     }
 
     /**
+     * Tells a set of rows from a single row: INSERT/REPLACE accept both.
+     *
+     * A set of rows is a list, i.e. its first key is numeric and holds an array.
+     *
+     * @param array $data
+     *
+     * @return bool
+     */
+    public static function isMultiRow(array $data): bool
+    {
+        if (!$data) {
+            return false;
+        }
+        $firstKey = array_key_first($data);
+
+        return is_numeric($firstKey) && is_array($data[$firstKey]);
+    }
+
+    /**
      * @param mixed $param
      *
      * @return string
@@ -987,7 +1006,8 @@ class Query
      */
     protected function _sqlLimit(): string
     {
-        if ($this->limit) {
+        // an offset without a limit is not valid SQL on its own
+        if (isset($this->limit[0])) {
             $offset = isset($this->limit[1]) ? $this->limit[1] . ',' : '';
 
             return $offset . $this->limit[0];
@@ -1137,7 +1157,7 @@ class Query
             $columns = $values = [];
             $types = $this->columnTypes();
             // single or multiple insert/replace
-            if (is_numeric($firstKey = array_key_first($this->update)) && is_array($this->update[$firstKey])) {
+            if (self::isMultiRow($this->update)) {
                 // $this->update has [][] -- multiple operation
                 foreach ($this->update as $row) {
                     foreach($row as $col => $val) {
@@ -1668,7 +1688,14 @@ class Query
             'original' => null,
         ];
 
-        return $this->_execQuery($request);
+        $resultSet = $this->_execQuery($request);
+        if (!is_array($resultSet->result())) {
+            // an empty answer is packed as the boolean "true" by _execQuery(), but callers of
+            // a listing expect a list - Connection::showVariables() is even typed ": array"
+            $resultSet->setResult('collection', []);
+        }
+
+        return $resultSet;
     }
 
     /**
@@ -1887,6 +1914,9 @@ class Query
     {
         $this->command = 'INSERT';
         $this->update = $data;
+        if ($id && !self::isMultiRow($data)) {
+            $this->update['id'] = $id;
+        }
 
         $request = $this->parse();
 
@@ -1923,7 +1953,7 @@ class Query
         $this->command = 'REPLACE';
 
         $this->update = $data;
-        if ($id) {
+        if ($id && !self::isMultiRow($data)) {
             $this->update['id'] = $id;
         }
 

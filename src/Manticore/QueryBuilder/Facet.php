@@ -116,7 +116,8 @@ class Facet
      */
     public function offset(int $param): Facet
     {
-        $this->limit[0] = $param;
+        // limit[0] is the limit itself, limit[1] the offset
+        $this->limit[1] = $param;
 
         return $this;
     }
@@ -174,7 +175,8 @@ class Facet
      */
     protected function _sqlLimit(): string
     {
-        if ($this->limit) {
+        // an offset without a limit is not valid SQL on its own
+        if (isset($this->limit[0])) {
             $offset = isset($this->limit[1]) ? $this->limit[1] . ',' : '';
 
             return $offset . $this->limit[0];

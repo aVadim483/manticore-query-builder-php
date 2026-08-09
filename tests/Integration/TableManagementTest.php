@@ -238,4 +238,9 @@ final class TableManagementTest extends IntegrationTestCase
 
         $this->assertNotEmpty($variables);
     }
+
+    public function testShowVariablesWithPatternThatMatchesNothingReturnsEmptyArray(): void
+    {
+        $this->assertSame([], ManticoreDb::showVariables('%no_such_variable%'));
+    }
 }

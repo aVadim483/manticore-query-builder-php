@@ -91,6 +91,12 @@ final class SelectSqlTest extends UnitTestCase
         );
     }
 
+    public function testOffsetWithoutLimitRendersNothing(): void
+    {
+        // "LIMIT <offset>," is not valid SQL on its own
+        $this->assertSqlSame('SELECT * FROM products', $this->query()->offset(5)->toSql());
+    }
+
     public function testLimitWithTwoArguments(): void
     {
         // limit(<offset>, <limit>)

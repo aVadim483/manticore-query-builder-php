@@ -72,6 +72,21 @@ final class FacetSqlTest extends TestCase
         $this->assertSame('FACET brand LIMIT 10,5', (string)$facet->limit(10, 5));
     }
 
+    public function testFacetOffsetKeepsLimit(): void
+    {
+        $facet = new Facet('brand');
+        $facet->limit(5)->offset(10);
+
+        $this->assertSame('FACET brand LIMIT 10,5', (string)$facet);
+    }
+
+    public function testFacetOffsetWithoutLimitRendersNothing(): void
+    {
+        $facet = new Facet('brand');
+
+        $this->assertSame('FACET brand', (string)$facet->offset(10));
+    }
+
     public function testFullFacetClause(): void
     {
         $facet = new Facet('price');

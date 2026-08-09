@@ -23,6 +23,10 @@ final class ParserTest extends TestCase
             'placeholder in backticks'   => ['`?products`', 'pre_', false, '`pre_products`'],
             'plain name is left alone'   => ['products', 'pre_', false, 'products'],
             'plain name, force prefix'   => ['products', 'pre_', true, 'pre_products'],
+            // the prefix belongs inside the backticks, not in front of them
+            'backticks, force prefix'    => ['`products`', 'pre_', true, '`pre_products`'],
+            'backticks, no force'        => ['`products`', 'pre_', false, '`products`'],
+            'backticks placeholder'      => ['`?products`', 'pre_', true, '`pre_products`'],
             'empty prefix'               => ['?products', '', false, 'products'],
             'empty prefix, force'        => ['products', '', true, 'products'],
             'surrounding spaces trimmed' => ['  ?products  ', 'pre_', false, 'pre_products'],

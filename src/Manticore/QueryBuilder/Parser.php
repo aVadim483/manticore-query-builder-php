@@ -79,7 +79,7 @@ class Parser
                         $exp1 = null;
                     }
                     else {
-                        if (preg_match('#^(?P<tables>[\w\.\?]+)(\s+(WHERE)\s+(?P<where>.+))?(\s+(GROUP\s+BY)\s+(?P<group>.+))?(\s+(ORDER\s+ BY)\s+(?P<order>.+))?(\s+(LIMIT)\s+(?P<limit>.+))?(\s+(OPTION)\s+(?P<option>.+))?$#siU', $exp1, $mp)) {
+                        if (preg_match('#^(?P<tables>[\w\.\?`]+)(\s+(WHERE)\s+(?P<where>.+))?(\s+(GROUP\s+BY)\s+(?P<group>.+))?(\s+(ORDER\s+ BY)\s+(?P<order>.+))?(\s+(LIMIT)\s+(?P<limit>.+))?(\s+(OPTION)\s+(?P<option>.+))?$#siU', $exp1, $mp)) {
                             $result['table'] = $this->_formatTables($mp['tables']);
                             $parts[] = $result['table'];
                             $exp1 = null;
@@ -143,7 +143,7 @@ class Parser
                 break;
 
             case 'INSERT':
-                if (preg_match('#^INSERT\s+INTO\s+(?P<tables>[\w.?]+(\s+(AS\s+)?[\w.]+)?\s*)\((?P<fields>.+)\)\s+VALUES([\s\(]+)(?P<values>.+)$#si', $query, $m)) {
+                if (preg_match('#^INSERT\s+INTO\s+(?P<tables>[\w.?`]+(\s+(AS\s+)?[\w.]+)?\s*)\((?P<fields>.+)\)\s+VALUES([\s\(]+)(?P<values>.+)$#si', $query, $m)) {
                     $result['table'] = $this->_formatTables($m['tables']);
                     $result['query'] = 'INSERT INTO ' . $result['table'] . '(' . $this->_formatFields($m['fields']) . ') VALUES (' . trim($m['values']);
                 }
@@ -151,7 +151,7 @@ class Parser
 
             case 'UPDATE':
             case 'REPLACE':
-                if (preg_match('#^(UPDATE|REPLACE)\s+(?P<tables>[\w.?]+(\s+(AS\s+)?[\w.]+)?\s*)SET(?P<set>[\S\s]*)(\s+WHERE\s+(?P<where>.+))?$#siU', $query, $m)) {
+                if (preg_match('#^(UPDATE|REPLACE)\s+(?P<tables>[\w.?`]+(\s+(AS\s+)?[\w.]+)?\s*)SET(?P<set>[\S\s]*)(\s+WHERE\s+(?P<where>.+))?$#siU', $query, $m)) {
                     $result['query'] = $command . ' ' . $this->_formatTables($m['tables']) . ' SET ' . $this->_formatFieldsSet($m['set']);
                     if (!empty($m['where'])) {
                         $result['query'] .= ' WHERE ' . $this->_formatWhereParams($m['where']);
@@ -160,7 +160,7 @@ class Parser
                 break;
 
             case 'DELETE':
-                if (preg_match('#^DELETE\s+FROM\s+(?P<table>[\w.?]+)(\s+WHERE\s+(?P<where>.+))?$#siU', $query, $m)) {
+                if (preg_match('#^DELETE\s+FROM\s+(?P<table>[\w.?`]+)(\s+WHERE\s+(?P<where>.+))?$#siU', $query, $m)) {
                     $result['query'] = $command . ' FROM ' . $this->_tableName($m['table']);
                     if (!empty($m['where'])) {
                         $result['query'] .= ' WHERE ' . $this->_formatWhereParams($m['where']);
@@ -169,7 +169,7 @@ class Parser
                 break;
 
             case 'CREATE TABLE':
-                if (preg_match('#^CREATE\s+TABLE\s+(?P<if>IF NOT EXISTS\s+)?(?P<table>[\w.?]+)\s*\((?P<fields>.+)\)(?P<options>.*)$#siU', $query, $m)) {
+                if (preg_match('#^CREATE\s+TABLE\s+(?P<if>IF NOT EXISTS\s+)?(?P<table>[\w.?`]+)\s*\((?P<fields>.+)\)(?P<options>.*)$#siU', $query, $m)) {
                     $result['query'] = $command;
                     if (!empty($m['if'])) {
                         $result['query'] .= ' IF NOT EXISTS';
@@ -179,7 +179,7 @@ class Parser
                         $result['query'] .= ' ' . trim($m['options']);
                     }
                 }
-                elseif (preg_match('#^CREATE\s+TABLE\s+(?P<if>IF NOT EXISTS\s+)?(?P<table>[\w.?]+)\s+(?P<options>.*)$#siU', $query, $m)) {
+                elseif (preg_match('#^CREATE\s+TABLE\s+(?P<if>IF NOT EXISTS\s+)?(?P<table>[\w.?`]+)\s+(?P<options>.*)$#siU', $query, $m)) {
                     $result['query'] = $command;
                     if (!empty($m['if'])) {
                         $result['query'] .= ' IF NOT EXISTS';
@@ -461,24 +461,25 @@ class Parser
     public static function resolveTableName(string $name, ?string $prefix = '', ?bool $forcePrefix = false): string
     {
         $name = trim($name);
-        if (strpos($name, '?') !== false) {
-            if ($name[0] === '?') {
-                $name = $prefix . substr($name, 1);
-            }
-            elseif ($name[0] === $name[-1] && substr($name, 0, 2) === '`?') {
-                $name = $name[0] . $prefix . substr($name, 2, -1) . $name[0];
-            }
-        }
-        elseif ($prefix && $forcePrefix) {
-            if ($name[0] === '`' && $name[0] === $name[-1] && substr($name, 0, 2) === '`?') {
-                $name = $name[0] . $prefix . substr($name, 1, -1) . $name[0];
-            }
-            else {
-                $name = $prefix . $name;
-            }
+        if ($name === '') {
+            return $name;
         }
 
-        return $name;
+        // a name may be wrapped in backticks - the prefix belongs inside them
+        $quote = '';
+        if (strlen($name) > 1 && $name[0] === '`' && $name[-1] === '`') {
+            $quote = '`';
+            $name = substr($name, 1, -1);
+        }
+
+        if (strpos($name, '?') === 0) {
+            $name = $prefix . substr($name, 1);
+        }
+        elseif ($prefix && $forcePrefix) {
+            $name = $prefix . $name;
+        }
+
+        return $quote . $name . $quote;
     }
 
     /**

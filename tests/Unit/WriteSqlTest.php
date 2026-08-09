@@ -41,6 +41,37 @@ final class WriteSqlTest extends UnitTestCase
         );
     }
 
+    public function testInsertAcceptsIdAsArgument(): void
+    {
+        $client = new FakeClient($this->productColumnTypes());
+        $this->queryFor($client)->insert(['title' => 'x'], 42);
+
+        $this->assertSqlSame("INSERT INTO products(title,id) VALUES('x',42)", $client->lastQuery());
+    }
+
+    public function testIdArgumentIsIgnoredForMultipleRows(): void
+    {
+        // a set of rows carries its own ids; adding one on top would break the statement
+        $client = new FakeClient($this->productColumnTypes());
+        $this->queryFor($client)->insert([['title' => 'first'], ['title' => 'second']], 42);
+
+        $this->assertSqlSame(
+            "INSERT INTO products(title) VALUES ('first'),('second')",
+            $client->lastQuery()
+        );
+    }
+
+    public function testReplaceIdArgumentIsIgnoredForMultipleRows(): void
+    {
+        $client = new FakeClient($this->productColumnTypes());
+        $this->queryFor($client)->replace([['id' => 1, 'title' => 'first'], ['id' => 2, 'title' => 'second']], 42);
+
+        $this->assertSqlSame(
+            "REPLACE INTO products(id,title) VALUES (1,'first'),(2,'second')",
+            $client->lastQuery()
+        );
+    }
+
     public function testInsertAcceptsIdInsideData(): void
     {
         $client = new FakeClient($this->productColumnTypes());
