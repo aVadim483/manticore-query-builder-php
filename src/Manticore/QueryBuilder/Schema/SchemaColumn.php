@@ -157,6 +157,10 @@ class SchemaColumn
      */
     public static function define(string $name, $type, $options = null): SchemaColumn
     {
+        // options may come as a string of flags, e.g. text('title', 'indexed stored')
+        if (is_string($options)) {
+            $options = ($options = trim($options)) === '' ? [] : preg_split('/\s+/', $options);
+        }
         if (is_array($type)) {
             if ($options) {
                 $options = array_replace_recursive((array)$options, $type);

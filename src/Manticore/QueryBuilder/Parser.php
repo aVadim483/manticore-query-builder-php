@@ -580,6 +580,47 @@ class Parser
     }
 
     /**
+     * Literal for a missing value of the given column type.
+     *
+     * Manticore does not accept NULL in INSERT/REPLACE at all, so a column that has no value
+     * (e.g. it is absent from one of the rows of a multi-row insert) has to be written as the
+     * empty value of its type - otherwise the statement is not even valid SQL.
+     *
+     * @param string|null $type
+     *
+     * @return string
+     */
+    public static function emptyValue(?string $type = null): string
+    {
+        switch ($type) {
+            case 'boolean':
+            case 'bool':
+            case 'bigint':
+            case 'integer':
+            case 'int':
+            // DESCRIBE reports an integer column as "uint"
+            case 'uint':
+            case 'timestamp':
+            case 'float':
+            case 'double':
+                return '0';
+            case 'mva':
+            case 'mva64':
+            case 'multi':
+            case 'multi64':
+                return '()';
+            case 'string':
+            case 'str':
+            case 'text':
+            case 'object':
+            case 'json':
+                return '\'\'';
+        }
+
+        return 'NULL';
+    }
+
+    /**
      * @param $value
      * @param string|null $type
      *
@@ -593,11 +634,15 @@ class Parser
             }
             $type = gettype($value);
         }
+        if ($value === null) {
+            return self::emptyValue($type);
+        }
         switch ($type) {
             case 'string':
             case 'str':
             case 'text':
             case 'object':
+            case 'json':
                 return '\'' . addslashes((string)$value) . '\'';
             case 'boolean':
             case 'bool':
@@ -605,6 +650,8 @@ class Parser
             case 'bigint':
             case 'integer':
             case 'int':
+            // DESCRIBE reports an integer column as "uint"
+            case 'uint':
             case 'timestamp':
                 if (is_numeric($value)) {
                     $val = (int)$value;
@@ -615,12 +662,14 @@ class Parser
                 else {
                     $val = strtotime((string)$value);
                 }
-                return (string)$val;
+                // strtotime() returns false for anything it cannot parse
+                return (string)(int)$val;
             case 'float':
             case 'double':
                 $value = (float)$value;
                 return str_replace(',', '.', (string)$value);
             case 'mva':
+            case 'mva64':
             case 'multi':
             case 'multi64':
                 return (string)((int)$value);

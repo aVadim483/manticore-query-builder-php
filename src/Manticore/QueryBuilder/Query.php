@@ -10,6 +10,17 @@ use Psr\Log\LoggerInterface;
 
 class Query
 {
+    /**
+     * Placeholder for the argument of a unary operator.
+     *
+     * IS NULL / IS NOT NULL take no argument, but where($field, $arg) is the shortcut for
+     * where($field, '=', $arg), so passing the operator alone would turn it into a value.
+     * This third argument is never used by the condition itself - it only keeps that shortcut
+     * from kicking in, which is why where($field, 'IS NULL') still compares against the
+     * string "IS NULL".
+     */
+    private const NO_ARG = false;
+
     private array $config;
     private ?array $table;
     private string $prefix;
@@ -117,8 +128,11 @@ class Query
      */
     public static function escapeParam($param): string
     {
+        if (is_bool($param)) {
+            return $param ? '1' : '0';
+        }
 
-        return is_string($param) ? addslashes($param) : $param;
+        return is_string($param) ? addslashes($param) : (string)$param;
     }
 
     public static function quoteParam($param): string
@@ -572,21 +586,23 @@ class Query
     public function fieldWeights($value): Query
     {
         if (is_string($value)) {
-            if ($value[0] === '(' && $value[-1] === ')') {
+            $value = trim($value);
+            if ($value !== '' && $value[0] === '(' && $value[-1] === ')') {
                 $value = substr($value, 1, -1);
             }
-            $value = explode(',', $value);
-            foreach ($value as $str) {
-                [$field, $weight] = array_map('trim', explode('=', $str));
-                if ($weight === '') {
-                    $weight = null;
+            foreach (explode(',', $value) as $str) {
+                if (trim($str) === '') {
+                    continue;
                 }
-                $this->fieldWeight($field, $weight);
+                $pair = array_map('trim', explode('=', $str, 2));
+                $field = $pair[0];
+                $weight = $pair[1] ?? '';
+                $this->fieldWeight($field, $weight === '' ? null : (int)$weight);
             }
         }
         else {
             foreach ($value as $field => $weight) {
-                $this->fieldWeight($field, $weight);
+                $this->fieldWeight($field, $weight === null ? null : (int)$weight);
             }
         }
 
@@ -710,7 +726,7 @@ class Query
      */
     public function whereNull($field): Query
     {
-        return $this->andWhere($field, 'IS NULL');
+        return $this->andWhere($field, 'IS NULL', self::NO_ARG);
     }
 
     /**
@@ -720,7 +736,7 @@ class Query
      */
     public function andWhereNull($field): Query
     {
-        return $this->andWhere($field, 'IS NULL');
+        return $this->andWhere($field, 'IS NULL', self::NO_ARG);
     }
 
     /**
@@ -730,7 +746,7 @@ class Query
      */
     public function orWhereNull($field): Query
     {
-        return $this->orWhere($field, 'IS NULL');
+        return $this->orWhere($field, 'IS NULL', self::NO_ARG);
     }
 
     /**
@@ -740,7 +756,7 @@ class Query
      */
     public function whereNotNull($field): Query
     {
-        return $this->andWhere($field, 'IS NOT NULL');
+        return $this->andWhere($field, 'IS NOT NULL', self::NO_ARG);
     }
 
     /**
@@ -750,7 +766,7 @@ class Query
      */
     public function andWhereNotNull($field): Query
     {
-        return $this->andWhere($field, 'IS NOT NULL');
+        return $this->andWhere($field, 'IS NOT NULL', self::NO_ARG);
     }
 
     /**
@@ -760,7 +776,7 @@ class Query
      */
     public function orWhereNotNull($field): Query
     {
-        return $this->orWhere($field, 'IS NOT NULL');
+        return $this->orWhere($field, 'IS NOT NULL', self::NO_ARG);
     }
 
     /**
@@ -1653,6 +1669,33 @@ class Query
     }
 
     /**
+     * Runs a service statement that does not go through _execQuery().
+     *
+     * Errors must not escape as exceptions here either: the whole builder reports a failed
+     * query through ResultSet::error(). Note that columnTypes() calls describe() before any
+     * INSERT/UPDATE/REPLACE is even built, so without this an unknown table would throw
+     * instead of returning an unsuccessful ResultSet.
+     *
+     * @param string $sql
+     * @param string|null $error filled with the error message, if any
+     *
+     * @return array raw client response
+     */
+    protected function _execServiceQuery(string $sql, ?string &$error = null): array
+    {
+        $error = null;
+        try {
+            return $this->client->query($sql) ?: [];
+        }
+        catch (\Throwable $e) {
+            $error = $e->getMessage();
+            $this->log('error', $e->getMessage(), ['query' => $sql]);
+
+            return [];
+        }
+    }
+
+    /**
      * DESCRIBE statement lists table columns and their associated types. Columns are document ID, full-text fields,
      * and attributes
      *
@@ -1661,16 +1704,19 @@ class Query
     public function describe(): ResultSet
     {
         $sql = 'DESCRIBE ' . $this->_sqlTable();
-        $response = $this->client->query($sql);
+        $response = $this->_execServiceQuery($sql, $error);
         $result = [
             'command' => 'DESCRIBE',
             'query' => $sql,
             'original' => null,
             'result' => [
                 'type' => 'array',
-                'data' => $response['data'],
+                'data' => $response['data'] ?? [],
             ]
         ];
+        if ($error !== null) {
+            $result['response']['error'] = $error;
+        }
 
         return new ResultSet($result);
     }
@@ -1678,7 +1724,7 @@ class Query
     public function showCreate(): ResultSet
     {
         $sql = 'SHOW CREATE TABLE ' . $this->_sqlTable();
-        $response = $this->client->query($sql);
+        $response = $this->_execServiceQuery($sql, $error);
         $result = [
             'command' => 'SHOW CREATE TABLE',
             'query' => $sql,
@@ -1688,6 +1734,9 @@ class Query
                 'data' => $response['data'][0] ?? [],
             ]
         ];
+        if ($error !== null) {
+            $result['response']['error'] = $error;
+        }
 
         return new ResultSet($result);
     }
@@ -1725,16 +1774,19 @@ class Query
         if ($sync) {
             $sql .= ' OPTION sync=1';
         }
-        $this->client->query($sql);
+        $this->_execServiceQuery($sql, $error);
         $result = [
             'command' => $this->command,
             'query' => $sql,
             'original' => null,
             'result' => [
                 'type' => 'bool',
-                'data' => true,
+                'data' => $error === null,
             ]
         ];
+        if ($error !== null) {
+            $result['response']['error'] = $error;
+        }
 
         return new ResultSet($result);
     }

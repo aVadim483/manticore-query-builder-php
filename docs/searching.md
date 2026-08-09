@@ -131,6 +131,12 @@ You can use methods:
 * whereNotNull(\<field>)
 * andWhereNotNull(\<field>)
 * orWhereNotNull(\<field>)
+
+Use the dedicated methods for ```IS NULL``` / ```IS NOT NULL```: in the two-argument form
+```where('updated_at', 'IS NULL')``` the second argument is a value, not an operator,
+so that call compares the column with the string ```'IS NULL'```.
+Note also that ```IS NULL``` applies to attributes (including JSON keys such as
+```info.color```), not to full-text fields.
 * whereIn(\<field>, \<array>)
 * andWhereIn(\<field>, \<array>)
 * orWhereIn(\<field>, \<array>)
