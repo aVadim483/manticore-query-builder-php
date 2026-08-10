@@ -23,7 +23,9 @@ class Builder
      */
     public static function init(?array $config = [], $logger = null)
     {
-        self::$config = $config;
+        // the signature allows null, and an empty config makes connection() fall back
+        // to defaultConfig()
+        self::$config = $config ?: [];
         self::$logger = $logger;
         self::$connections = [];
     }

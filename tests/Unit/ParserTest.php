@@ -206,6 +206,22 @@ final class ParserTest extends TestCase
         $this->assertSame($expected, Parser::explode($separator, $expression, true));
     }
 
+    /**
+     * An unmatched closing bracket must not open a level of its own - otherwise every
+     * separator after it is swallowed.
+     */
+    public function testExplodeIgnoresUnmatchedClosingBrackets(): void
+    {
+        $this->assertSame(['a', '))b', 'c'], Parser::explode(',', 'a, ))b, c', true));
+        $this->assertSame(['a', 'b]', 'c'], Parser::explode(',', 'a, b], c', true));
+    }
+
+    public function testExplodeKeepsTailOfUnclosedOpeningBracket(): void
+    {
+        // an opening bracket that is never closed still swallows the rest, as before
+        $this->assertSame(['a', '((b, c'], Parser::explode(',', 'a, ((b, c', true));
+    }
+
     public function testExplodeWithoutTrimKeepsSpaces(): void
     {
         $this->assertSame(['a', ' b'], Parser::explode(',', 'a, b'));

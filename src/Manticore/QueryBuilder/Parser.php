@@ -6,6 +6,9 @@ namespace avadim\Manticore\QueryBuilder;
 
 class Parser
 {
+    /** Closing bracket => its opening counterpart */
+    private const BRACKET_PAIRS = [')' => '(', ']' => '[', '}' => '{'];
+
     private string $sql = '';
     private ?string $prefix = '';
 
@@ -533,16 +536,15 @@ class Parser
                 continue;
             }
 
-            if (in_array($expression[$pos], ['(', '[', '{'])) {
+            if (in_array($expression[$pos], ['(', '[', '{'], true)) {
                 $stack[++$level] = $expression[$pos];
             }
-            elseif (($expression[$pos] === ')' && $stack[$level] === '(')
-                || ($expression[$pos] === ']' && $stack[$level] === '[')
-                || ($expression[$pos] === '}' && $stack[$level] === '{')) {
-                unset($stack[$level--]);
-            }
-            elseif (in_array($expression[$pos], [')', ']', '}'])) {
-                $stack[++$level] = $expression[$pos];
+            elseif (isset(self::BRACKET_PAIRS[$expression[$pos]])) {
+                if ($level > 0 && isset($stack[$level]) && $stack[$level] === self::BRACKET_PAIRS[$expression[$pos]]) {
+                    unset($stack[$level--]);
+                }
+                // a closing bracket without a matching opening one is ignored: treating it as
+                // the start of a new level would swallow every separator after it
             }
             $chunk .= $expression[$pos];
         }

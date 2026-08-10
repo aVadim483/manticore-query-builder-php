@@ -202,7 +202,8 @@ class ResultSet
             return $facets;
         }
 
-        return $facets[$key];
+        // asking for a facet that is not there is not an error - the query simply had none
+        return $facets[$key] ?? [];
     }
 
     /**

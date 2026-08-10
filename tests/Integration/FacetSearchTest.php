@@ -119,4 +119,22 @@ final class FacetSearchTest extends IntegrationTestCase
 
         $this->assertSame([], $result->facets());
     }
+
+    /**
+     * Asking for a facet that is not there is not an error: the query simply had none.
+     */
+    public function testFacetByIndexIsEmptyWhenNoneRequested(): void
+    {
+        $result = ManticoreDb::table($this->table)->search();
+
+        $this->assertSame([], $result->facets(0));
+    }
+
+    public function testFacetByIndexOutOfRangeIsEmpty(): void
+    {
+        $result = ManticoreDb::table($this->table)->facet('brand')->search();
+
+        $this->assertNotEmpty($result->facets(0));
+        $this->assertSame([], $result->facets(9));
+    }
 }
