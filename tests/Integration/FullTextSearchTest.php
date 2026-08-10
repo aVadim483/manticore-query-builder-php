@@ -215,6 +215,43 @@ final class FullTextSearchTest extends IntegrationTestCase
         $this->assertStringContainsString('<em>lazy dog</em>', implode(' ', (array)$row['_highlight']));
     }
 
+    public function testExplainReturnsTransformationTree(): void
+    {
+        $result = ManticoreDb::table($this->table)->match('brown fox')->explain();
+
+        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertSame('EXPLAIN', $result->command());
+
+        $tree = $result->variable('transformed_tree');
+        $this->assertNotNull($tree, 'the tree must be exposed as a variable');
+        $this->assertStringContainsString('KEYWORD(brown', $tree);
+        $this->assertStringContainsString('KEYWORD(fox', $tree);
+    }
+
+    public function testExplainRowsCarryVariableAndValue(): void
+    {
+        $result = ManticoreDb::table($this->table)->match('lazy')->explain();
+
+        $this->assertSame(['Variable_name', 'Value'], $result->columns());
+        $this->assertSame('transformed_tree', $result->first()['Variable_name']);
+    }
+
+    public function testExplainInDotFormat(): void
+    {
+        $result = ManticoreDb::table($this->table)->match('brown | fox')->explain('dot');
+
+        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertStringContainsString('digraph', (string)$result->variable('transformed_tree'));
+    }
+
+    public function testExplainOfMissingTableReportsError(): void
+    {
+        $result = ManticoreDb::table($this->tableName('missing'))->match('x')->explain();
+
+        $this->assertFalse($result->success());
+        $this->assertNotNull($result->error());
+    }
+
     public function testLimitAndOffsetPaginateResults(): void
     {
         $all = $this->ids(ManticoreDb::table($this->table)->match('find me')->get());

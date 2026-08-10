@@ -470,22 +470,6 @@ class Query
     }
 
     /**
-     * @param array $params
-     *
-     * @return array
-     */
-    protected function _explainQuery(array $params): array
-    {
-        $time = microtime(true);
-        $response = $this->client->explainQuery($params);
-        //$response = [];
-        $time = microtime(true) - $time;
-        $items = [$response];
-
-        return ['exec_time' => $time, 'response' => $response, 'items' => $items];
-    }
-
-    /**
      * @param string $sql
      *
      * @return $this
@@ -1462,26 +1446,49 @@ class Query
     /**
      * Allows to get the query transformation tree of a query without running it. Useful for testing queries.
      *
+     * Explains the full-text expression given to match(), i.e.
+     *      table('?products')->match('brown fox')->explain()
+     * The tree is available as variable('transformed_tree'), and the rows of result() carry
+     * it under the "Variable_name"/"Value" keys, the same way status() and settings() do.
+     *
+     * @param string|null $format render format of the tree, e.g. "dot" for graphviz
+     *
      * @return ResultSet
      */
-    public function explain(): ResultSet
+    public function explain(?string $format = null): ResultSet
     {
-        $response = [
-            'command' => 'EXPLAIN',
-            'query' => $this->_sqlMatch(true),
-            'original' => null,
-        ];
+        $this->command = 'EXPLAIN';
+        $sql = 'EXPLAIN QUERY ' . $this->_sqlTable() . ' ' . ($this->_sqlMatch() ?? '\'\'');
+        if ($format) {
+            $sql .= ' OPTION format=' . self::escapeParam($format);
+        }
 
-        $params = [
-            'table' => $this->_sqlTable(),
-            'body' => [
-                'query' => $this->_sqlMatch(),
+        $response = $this->_execServiceQuery($sql, $error);
+
+        // the server answers with a "Variable"/"Value" pair; rename the first column so that
+        // ResultSet picks the tree up as a variable
+        $data = [];
+        foreach ($response['data'] ?? [] as $row) {
+            $name = $row['Variable'] ?? ($row['Variable_name'] ?? null);
+            if ($name !== null) {
+                $data[] = ['Variable_name' => $name, 'Value' => $row['Value'] ?? ''];
+            }
+        }
+
+        $result = [
+            'command' => $this->command,
+            'query' => $sql,
+            'original' => null,
+            'result' => [
+                'type' => 'collection',
+                'data' => $data,
             ],
         ];
+        if ($error !== null) {
+            $result['response']['error'] = $error;
+        }
 
-        $response['result'] = $this->_explainQuery($params);
-
-        return new ResultSet($response);
+        return new ResultSet($result);
     }
 
     /**

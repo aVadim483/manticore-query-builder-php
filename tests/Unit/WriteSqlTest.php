@@ -256,6 +256,38 @@ final class WriteSqlTest extends UnitTestCase
         $this->assertSqlSame('OPTIMIZE INDEX products OPTION sync=1', $client->lastQuery());
     }
 
+    public function testExplainStatement(): void
+    {
+        $client = new FakeClient();
+        $this->queryFor($client)->match('brown fox')->explain();
+
+        $this->assertSqlSame("EXPLAIN QUERY products 'brown fox'", $client->lastQuery());
+    }
+
+    public function testExplainWithFormat(): void
+    {
+        $client = new FakeClient();
+        $this->queryFor($client)->match('brown fox')->explain('dot');
+
+        $this->assertSqlSame("EXPLAIN QUERY products 'brown fox' OPTION format=dot", $client->lastQuery());
+    }
+
+    public function testExplainEscapesMatchExpression(): void
+    {
+        $client = new FakeClient();
+        $this->queryFor($client)->match("it's")->explain();
+
+        $this->assertSqlSame("EXPLAIN QUERY products 'it\\'s'", $client->lastQuery());
+    }
+
+    public function testExplainResolvesTablePrefix(): void
+    {
+        $client = new FakeClient();
+        $this->queryFor($client, '?products', ['prefix' => 'pre_'])->match('x')->explain();
+
+        $this->assertSqlSame("EXPLAIN QUERY pre_products 'x'", $client->lastQuery());
+    }
+
     public function testDescribeStatement(): void
     {
         $client = new FakeClient();

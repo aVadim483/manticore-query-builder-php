@@ -167,6 +167,25 @@ Set max_matches for the search.
 $query->maxMatches(10000);
 ```
 
+### explain()
+Shows how the full-text expression of ```match()``` is transformed, without running the search.
+Useful when a query does not match what you expect it to.
+```php
+$res = ManticoreDb::table('?products')->match('brown fox')->explain();
+
+$res->variable('transformed_tree');
+// AND(
+//   AND(KEYWORD(brown, querypos=1)),
+//   AND(KEYWORD(fox, querypos=2)))
+```
+Pass a format to render the tree differently, e.g. ```dot``` for graphviz:
+```php
+$res = ManticoreDb::table('?products')->match('brown | fox')->explain('dot');
+// digraph "transformed_tree" { 0 [shape=record,style=filled label="OR"] ... }
+```
+The rows of ```$res->result()``` carry the tree under the ```Variable_name``` / ```Value```
+keys, the same way ```tableStatus()``` and ```tableSettings()``` report their values.
+
 ## Working with JSON attributes
 
 This section based on examples from [Manticore Search Courses](https://play.manticoresearch.com/json/).
