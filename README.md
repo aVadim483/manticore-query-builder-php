@@ -15,14 +15,28 @@ Features
 * Multiple INSERT and REPLACE
 * Support MATCH() and multi-level WHERE for SELECT
 * Support faceted search
+* Column types are applied in both directions: PHP values on write, PHP types on read
+* PSR-3 logging of queries and EXPLAIN of full-text expressions
 
-More detail documentation is available in [/docs](/docs/README.md) folder.
 Manticore Search server documentation: https://manual.manticoresearch.com/
+
+## Requirements
+
+* PHP 7.4 or above with the PDO extension
+* Manticore Search reachable over its SQL interface (port 9306 by default).
+  The HTTP/JSON API is not used.
+
+## Installation
+
+```bash
+composer require avadim/manticore-query-builder-php
+```
 
 ## Quick start guide
 
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
 
 // Define config
 $config = [
@@ -47,12 +61,12 @@ ManticoreDb::init($config);
 // Create table
 ManticoreDb::create('?products', function (SchemaTable $table) {
     $table->timestamp('created_at');
-    $table->string('manufacturer'); 
-    $table->text('title'); 
-    $table->json('info'); 
-    $table->float('price'); 
-    $table->multi('categories'); 
-    $table->bool('on_sale'); 
+    $table->string('manufacturer');
+    $table->text('title');
+    $table->json('info');
+    $table->float('price');
+    $table->multi('categories');
+    $table->bool('on_sale');
 });
 
 // Insert single row
@@ -88,13 +102,31 @@ $multipleRows = [
 $res = ManticoreDb::table('?products')->insert($multipleRows);
 // $res->result() => array of <id> of new records
 
+// Search: get() returns rows keyed by document id, with values cast back to PHP types
+// ('info' as an array, 'categories' as int[], 'on_sale' as bool)
 $rows = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get();
 ```
 
 ## Documentation
 
-More detail documentation is available in [/docs](/docs/README.md) folder.
+More detailed documentation is available in the [/docs](/docs/README.md) folder:
+[configuration](/docs/configuration.md),
+[searching](/docs/searching.md),
+[tables](/docs/tables.md),
+[result set](/docs/result_set.md),
+[logging](/docs/logging.md).
+
+## Tests
+
+```bash
+vendor/bin/phpunit --testsuite unit   # SQL building and parsing, no server needed
+vendor/bin/phpunit                    # adds the integration tests
+```
+
+The integration tests create and drop their own tables on a live server. They are skipped,
+not failed, when nothing listens on `MANTICORE_HOST:MANTICORE_PORT` (`127.0.0.1:9306`
+by default).
 
 ## Want to support?
 
-if you find this package useful  just give me a star on [GitHub](https://github.com/aVadim483/manticore-query-builder-php) :)
+If you find this package useful, just give me a star on [GitHub](https://github.com/aVadim483/manticore-query-builder-php) :)
