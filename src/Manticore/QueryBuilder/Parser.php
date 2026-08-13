@@ -497,6 +497,66 @@ class Parser
     }
 
     /**
+     * Flattens the arguments of a column list into a plain list of names.
+     *
+     * Every form is accepted: ('a', 'b'), (['a', 'b']) and the single string ('a, b') -
+     * the split honours brackets and quotes, so "IN(color, 1, 2) as f" stays one item.
+     *
+     * @param array $args
+     *
+     * @return array
+     */
+    public static function columnList(array $args): array
+    {
+        $result = [];
+        foreach ($args as $arg) {
+            if (is_array($arg)) {
+                foreach (self::columnList($arg) as $name) {
+                    $result[] = $name;
+                }
+            }
+            elseif (is_string($arg)) {
+                foreach (self::explode(',', $arg, true) as $name) {
+                    if ($name !== '') {
+                        $result[] = $name;
+                    }
+                }
+            }
+            elseif ($arg !== null) {
+                $result[] = $arg;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Builds the "<column> ASC|DESC" items of an ORDER BY clause.
+     *
+     * A direction spelled out in the expression itself wins, so that orderBy('price DESC')
+     * does not end up as "price DESC ASC".
+     *
+     * @param string|array $names
+     * @param string $direction
+     *
+     * @return array
+     */
+    public static function orderList($names, string $direction): array
+    {
+        $dir = strtoupper(trim($direction));
+        if ($dir !== 'ASC' && $dir !== 'DESC') {
+            throw new \InvalidArgumentException('Order direction must be "asc" or "desc", "' . $direction . '" given');
+        }
+
+        $result = [];
+        foreach (self::columnList([$names]) as $name) {
+            $result[] = preg_match('/\s+(ASC|DESC)$/i', (string)$name) ? $name : $name . ' ' . $dir;
+        }
+
+        return $result;
+    }
+
+    /**
      * Split a string into substrings including quotes
      *
      * @param string $separator

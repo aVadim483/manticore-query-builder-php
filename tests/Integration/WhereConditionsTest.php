@@ -228,6 +228,22 @@ final class WhereConditionsTest extends IntegrationTestCase
         $this->assertSame([1, 5, 6], $this->ids($rows));
     }
 
+    public function testOffsetWithoutLimitIsRejected(): void
+    {
+        $this->expectException(\LogicException::class);
+
+        ManticoreDb::table($this->table)->offset(2)->get();
+    }
+
+    public function testOffsetBeforeLimitPagesTheSameWay(): void
+    {
+        $viaOffsetFirst = ManticoreDb::table($this->table)->orderBy('id')->offset(2)->limit(3)->get();
+        $viaLimitFirst = ManticoreDb::table($this->table)->orderBy('id')->limit(3)->offset(2)->get();
+
+        $this->assertSame([3, 4, 5], $this->ids($viaOffsetFirst));
+        $this->assertSame($this->ids($viaLimitFirst), $this->ids($viaOffsetFirst));
+    }
+
     public function testOrderByDescWithLimit(): void
     {
         $rows = ManticoreDb::table($this->table)
@@ -258,6 +274,69 @@ final class WhereConditionsTest extends IntegrationTestCase
         foreach ($rows as $row) {
             $this->assertGreaterThan(2, $row['cnt']);
         }
+    }
+
+    public function testGroupByWithHavingOperatorForm(): void
+    {
+        // having('cnt', '>', 2) must produce the same server-side result as the raw form
+        $rows = ManticoreDb::table($this->table)
+            ->select(['country', 'count(*) as cnt'])
+            ->groupBy('country')
+            ->having('cnt', '>', 2)
+            ->get();
+
+        $this->assertCount(2, $rows);
+        foreach ($rows as $row) {
+            $this->assertGreaterThan(2, $row['cnt']);
+        }
+    }
+
+    public function testGroupByWithHavingArrayForms(): void
+    {
+        // the server takes IN and BETWEEN in HAVING, but neither AND nor brackets,
+        // which is why having() builds a single expression only
+        $in = ManticoreDb::table($this->table)
+            ->select(['country', 'count(*) as cnt'])
+            ->groupBy('country')
+            ->having('cnt', 'IN', [3])
+            ->search(['country', 'count(*) as cnt']);
+
+        $this->assertTrue($in->success(), (string)$in->error());
+        foreach ($in->result() as $row) {
+            $this->assertSame(3, $row['cnt']);
+        }
+
+        $between = ManticoreDb::table($this->table)
+            ->select(['country', 'count(*) as cnt'])
+            ->groupBy('country')
+            ->having('cnt', 'BETWEEN', [3, 9])
+            ->search(['country', 'count(*) as cnt']);
+
+        $this->assertTrue($between->success(), (string)$between->error());
+        foreach ($between->result() as $row) {
+            $this->assertGreaterThanOrEqual(3, $row['cnt']);
+        }
+    }
+
+    public function testGroupByAcceptsSeveralColumns(): void
+    {
+        $res = ManticoreDb::table($this->table)
+            ->select(['country', 'price', 'count(*) as cnt'])
+            ->groupBy('country', 'price')
+            ->search(['country', 'price', 'count(*) as cnt']);
+
+        $this->assertTrue($res->success(), (string)$res->error());
+        $this->assertNotEmpty($res->result());
+    }
+
+    public function testOrderByDirectionArgument(): void
+    {
+        $rows = ManticoreDb::table($this->table)->orderBy('price', 'desc')->limit(2)->get();
+
+        $this->assertSame(
+            $this->ids(ManticoreDb::table($this->table)->orderByDesc('price')->limit(2)->get()),
+            $this->ids($rows)
+        );
     }
 
     public function testConditionWithQuoteInValueFindsRow(): void

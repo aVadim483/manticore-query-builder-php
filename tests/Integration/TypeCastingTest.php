@@ -287,4 +287,22 @@ final class TypeCastingTest extends IntegrationTestCase
 
         $this->assertCount(2, $rows);
     }
+
+    public function testQuotedLiteralsInSelectExpression(): void
+    {
+        // the same expression written with literals instead of named parameters: the column
+        // list is not escaped, so the quotes reach the server as they were written
+        ManticoreDb::table($this->table)->insert([
+            ['title' => 'a', 'info' => ['color' => ['blue', 'black']]],
+            ['title' => 'b', 'info' => ['color' => ['white', 'red']]],
+        ]);
+
+        $result = ManticoreDb::table($this->table)
+            ->select(['*', "IN(info.color, 'black', 'white') as color_filter"])
+            ->where('color_filter=1')
+            ->search(['*', "IN(info.color, 'black', 'white') as color_filter"]);
+
+        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertCount(2, $result->result());
+    }
 }

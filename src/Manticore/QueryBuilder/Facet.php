@@ -63,25 +63,32 @@ class Facet
     }
 
     /**
-     * @param string $names
+     * orderBy('brand'), orderBy('brand', 'desc'), orderBy(['brand', 'count(*)'])
+     *
+     * @param string|array $names
+     * @param string|null $direction "asc" (default) or "desc"
      *
      * @return $this
      */
-    public function orderBy(string $names): Facet
+    public function orderBy($names, ?string $direction = null): Facet
     {
-        $this->orders[] = $names . ' ASC';
+        foreach (Parser::orderList($names, $direction ?? 'ASC') as $order) {
+            $this->orders[] = $order;
+        }
 
         return $this;
     }
 
     /**
-     * @param string $names
+     * @param string|array $names
      *
      * @return $this
      */
-    public function orderByDesc(string $names): Facet
+    public function orderByDesc($names): Facet
     {
-        $this->orders[] = $names . ' DESC';
+        foreach (Parser::orderList($names, 'DESC') as $order) {
+            $this->orders[] = $order;
+        }
 
         return $this;
     }

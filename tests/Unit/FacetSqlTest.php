@@ -58,6 +58,20 @@ final class FacetSqlTest extends TestCase
         $this->assertSame('FACET brand ORDER BY count(*) DESC,brand ASC', (string)$facet);
     }
 
+    public function testFacetOrderByWithDirectionArgument(): void
+    {
+        $facet = new Facet('brand');
+
+        $this->assertSame('FACET brand ORDER BY count(*) DESC', (string)$facet->orderBy('count(*)', 'desc'));
+    }
+
+    public function testFacetOrderByRejectsUnknownDirection(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        (new Facet('brand'))->orderBy('brand', 'up');
+    }
+
     public function testFacetLimit(): void
     {
         $facet = new Facet('brand');

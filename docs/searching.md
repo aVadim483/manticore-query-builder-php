@@ -7,6 +7,8 @@ Jump To:
 * [The MATCH clauses](#the-match-clauses)
 * [The WHERE Clause](#the-where-clause)
 * [limit() and offset()](#limit---and-offset--)
+* [orderBy() and orderByDesc()](#orderby---and-orderbydesc--)
+* [groupBy() and having()](#groupby---and-having--)
 * [maxMatches()](#maxmatches--)
 * [Working with JSON attributes](#working-with-json-attributes)
 * [Faceted search](#faceted-search)
@@ -65,6 +67,20 @@ $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 110
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get(['id', 'name', 'price']);
 
 ```
+
+The column list can be written in any of these forms, they all give the same result
+(```search()``` and ```get()``` accept the same arguments):
+```php
+$query->select(['id', 'name', 'price']);
+$query->select('id, name, price');
+$query->select('id', 'name', 'price');
+```
+Commas inside brackets and quotes do not split the list, so an expression stays in one piece:
+```php
+// SELECT id, IN(color, 1, 2) as f FROM ?products
+$query->select('id, IN(color, 1, 2) as f');
+```
+Note that ```select()``` replaces the previous column list rather than adding to it.
 
 ## Search conditions
 
@@ -182,14 +198,65 @@ Note also that ```IS NULL``` applies to attributes (including JSON keys such as
 ### limit() and offset()
 ```php
 $res = ManticoreDb::table('?products')->match('phone')->limit(100)->get();
+// the order of the two calls does not matter
 $res = ManticoreDb::table('?products')->match('phone')->limit(100)->offset(500)->get();
+$res = ManticoreDb::table('?products')->match('phone')->offset(500)->limit(100)->get();
+// limit(<offset>, <limit>) sets both at once
+$res = ManticoreDb::table('?products')->match('phone')->limit(500, 100)->get();
 ```
+An ```offset()``` without a ```limit()``` throws a ```LogicException```: Manticore has no
+```OFFSET``` of its own (```SELECT ... OFFSET 5``` is a syntax error), and the MySQL workaround
+of a huge ```LIMIT``` makes the server ignore the offset - so the page asked for cannot be
+returned, and saying so beats quietly answering with the first one.
 
 ### orderBy() and orderByDesc()
 ```php
+// ORDER BY price ASC
 $query->orderBy('price')->get();
+// ORDER BY created_at DESC - the two notations are equal
 $query->orderByDesc('created_at')->get();
+$query->orderBy('created_at', 'desc')->get();
 ```
+Several columns can be passed at once, the direction then applies to all of them:
+```php
+// ORDER BY price DESC,id DESC
+$query->orderBy('price, id', 'desc')->get();
+$query->orderByDesc(['price', 'id'])->get();
+```
+A direction written into the expression itself is kept as is, so ```orderBy('price DESC')```
+gives ```ORDER BY price DESC``` and not ```price DESC ASC```. Any direction other than
+```asc``` / ```desc``` throws an ```InvalidArgumentException```.
+
+### groupBy() and having()
+```php
+// SELECT country, count(*) as cnt FROM ?products GROUP BY country HAVING cnt > 2
+$res = ManticoreDb::table('?products')
+    ->select(['country', 'count(*) as cnt'])
+    ->groupBy('country')
+    ->having('cnt', '>', 2)
+    ->get();
+```
+```groupBy()``` takes the same column list forms as ```select()```:
+```php
+$query->groupBy('country', 'brand');
+$query->groupBy(['country', 'brand']);
+$query->groupBy('country, brand');
+```
+```having()``` accepts these forms; the value of the three- and two-argument ones is quoted
+and escaped, the one-argument one is passed through as a raw expression:
+```php
+$query->having('cnt', '>', 2);
+$query->having('cnt', 2);                 // => having('cnt', '=', 2)
+$query->having('cnt', 'IN', [2, 3]);      // HAVING cnt IN (2,3)
+$query->having('cnt', 'BETWEEN', [2, 5]); // HAVING cnt BETWEEN 2 AND 5
+$query->having('cnt > 2');                // raw
+```
+Only **one** expression can be set, because that is all the server takes: its syntax is
+```[HAVING where_condition]``` with a single condition, and ```HAVING a AND b```,
+```HAVING (a AND b)``` and ```HAVING a, b``` are all rejected as syntax errors. Calling
+```having()``` twice therefore throws a ```LogicException``` instead of building a query
+Manticore would refuse. Note also that the condition works on a grouping expression -
+an aggregate alias, ```COUNT(*)``` or ```GROUPBY()``` - not on an arbitrary column.
 
 ### maxMatches()
 Set max_matches for the search.
@@ -272,7 +339,13 @@ $res = ManticoreDb::table('t')->select(['id', 'ANY(x.stock > 0 AND GEODIST(23.0,
 $res = ManticoreDb::table('t')->orderByDesc('INTEGER(metadata.video_rec[0])')->get();
 
 // SELECT *, IN(metadata.color, 'black', 'white') AS color_filter WHERE color_filter=1;
-// Here we have to use a bind() because the select() escapes the quotes
+// The column list is not escaped, so literals can be written as they are
+$res = ManticoreDb::table($table)->select(['*', "IN(metadata.color, 'black', 'white') as color_filter"])
+    ->where('color_filter=1')
+    ->get();
+
+// The same with named parameters - use them for values that come from the outside,
+// they are passed to the server as bound parameters instead of being pasted into the SQL
 $res = ManticoreDb::table($table)->select(['*', 'IN(metadata.color, :black, :white) as color_filter'])
     ->where('color_filter=1')
     ->bind([':black' => 'black', ':white' => 'white'])
@@ -324,8 +397,8 @@ Facet methods you can use in a closure:
 * alias(string $alias)
 * byExpr(string $expr)
 * distinct(string $column)
-* orderBy(string $names)
-* orderByDesc(string $names)
+* orderBy(string|array $names, string $direction = 'asc')
+* orderByDesc(string|array $names)
 * limit(int $limit)
 * limit(int $offset, int $limit)
 * offset(int $offset)

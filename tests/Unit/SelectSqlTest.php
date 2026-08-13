@@ -38,6 +38,40 @@ final class SelectSqlTest extends UnitTestCase
         );
     }
 
+    public function testSelectKeepsQuotedLiteralsInExpressions(): void
+    {
+        // the list holds expressions, not values: escaping it would break every literal inside
+        $this->assertSqlSame(
+            "SELECT IN(color, 'black', 'white') as f FROM products",
+            $this->query()->select(["IN(color, 'black', 'white') as f"])->toSql()
+        );
+    }
+
+    public function testSelectAcceptsSeveralArguments(): void
+    {
+        // select('id', 'title') must not drop everything past the first argument
+        $this->assertSqlSame(
+            'SELECT id, title FROM products',
+            $this->query()->select('id', 'title')->toSql()
+        );
+    }
+
+    public function testSelectMixesArraysAndStrings(): void
+    {
+        $this->assertSqlSame(
+            'SELECT id, title, count(*) as c FROM products',
+            $this->query()->select(['id', 'title'], 'count(*) as c')->toSql()
+        );
+    }
+
+    public function testSelectSplitsColumnsInsideArrayItems(): void
+    {
+        $this->assertSqlSame(
+            'SELECT id, title FROM products',
+            $this->query()->select(['id, title'])->toSql()
+        );
+    }
+
     public function testTableNameIsResolvedWithPrefix(): void
     {
         $query = $this->query('?products', [], ['prefix' => 'pre_']);
@@ -71,11 +105,105 @@ final class SelectSqlTest extends UnitTestCase
         $this->assertSqlSame('SELECT cat, count(*) as c FROM products GROUP BY cat HAVING c>1', $sql);
     }
 
+    public function testGroupByAcceptsSeveralColumns(): void
+    {
+        // groupBy('cat', 'brand'), groupBy(['cat', 'brand']) and groupBy('cat, brand') are the same
+        $expected = 'SELECT * FROM products GROUP BY cat,brand';
+
+        $this->assertSqlSame($expected, $this->query()->groupBy('cat', 'brand')->toSql());
+        $this->assertSqlSame($expected, $this->query()->groupBy(['cat', 'brand'])->toSql());
+        $this->assertSqlSame($expected, $this->query()->groupBy('cat, brand')->toSql());
+    }
+
+    public function testHavingWithOperatorAndValue(): void
+    {
+        $sql = $this->query()->groupBy('cat')->having('c', '>', 1)->toSql();
+
+        $this->assertSqlSame('SELECT * FROM products GROUP BY cat HAVING c > 1', $sql);
+    }
+
+    public function testHavingShortFormMeansEquals(): void
+    {
+        $sql = $this->query()->groupBy('cat')->having('c', 1)->toSql();
+
+        $this->assertSqlSame('SELECT * FROM products GROUP BY cat HAVING c = 1', $sql);
+    }
+
+    public function testHavingQuotesStringValues(): void
+    {
+        $sql = $this->query()->groupBy('cat')->having('name', '=', "O'Reilly")->toSql();
+
+        $this->assertSqlSame('SELECT * FROM products GROUP BY cat HAVING name = \'O\\\'Reilly\'', $sql);
+    }
+
+    public function testHavingWithArrayValue(): void
+    {
+        // the manual documents "HAVING GROUPBY() IN (2000, 2002)"
+        $sql = $this->query()->groupBy('cat')->having('c', 'IN', [2, 3])->toSql();
+
+        $this->assertSqlSame('SELECT * FROM products GROUP BY cat HAVING c IN (2,3)', $sql);
+    }
+
+    public function testHavingBetween(): void
+    {
+        $sql = $this->query()->groupBy('cat')->having('c', 'BETWEEN', [2, 5])->toSql();
+
+        $this->assertSqlSame('SELECT * FROM products GROUP BY cat HAVING c BETWEEN 2 AND 5', $sql);
+    }
+
+    public function testSecondHavingIsRejected(): void
+    {
+        // the syntax is "[HAVING where_condition]" - a single condition, and the server
+        // rejects "a AND b", "(a AND b)" and "a, b" alike
+        $this->expectException(\LogicException::class);
+
+        $this->query()->groupBy('cat')->having('c>1')->having('c<9');
+    }
+
     public function testOrderByAscAndDesc(): void
     {
         $sql = $this->query()->orderBy('price')->orderByDesc('id')->toSql();
 
         $this->assertSqlSame('SELECT * FROM products ORDER BY price ASC,id DESC', $sql);
+    }
+
+    public function testOrderByWithDirectionArgument(): void
+    {
+        $sql = $this->query()->orderBy('price', 'desc')->toSql();
+
+        $this->assertSqlSame('SELECT * FROM products ORDER BY price DESC', $sql);
+    }
+
+    public function testOrderByAcceptsSeveralColumns(): void
+    {
+        $expected = 'SELECT * FROM products ORDER BY price DESC,id DESC';
+
+        $this->assertSqlSame($expected, $this->query()->orderBy('price, id', 'desc')->toSql());
+        $this->assertSqlSame($expected, $this->query()->orderByDesc(['price', 'id'])->toSql());
+    }
+
+    public function testOrderByKeepsDirectionSpelledInTheExpression(): void
+    {
+        // orderBy('price DESC') must not become "price DESC ASC"
+        $this->assertSqlSame(
+            'SELECT * FROM products ORDER BY price DESC',
+            $this->query()->orderBy('price DESC')->toSql()
+        );
+    }
+
+    public function testOrderByKeepsFunctionCallsWithCommas(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products ORDER BY INTERVAL(price,200,400) ASC',
+            $this->query()->orderBy('INTERVAL(price,200,400)')->toSql()
+        );
+    }
+
+    public function testOrderByRejectsUnknownDirection(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->query()->orderBy('price', 'up');
     }
 
     public function testLimit(): void
@@ -109,10 +237,29 @@ final class SelectSqlTest extends UnitTestCase
         $this->assertSqlSame('SELECT * FROM products', $this->query()->limit([])->toSql());
     }
 
-    public function testOffsetWithoutLimitRendersNothing(): void
+    public function testOffsetWithoutLimitIsRejected(): void
     {
-        // "LIMIT <offset>," is not valid SQL on its own
-        $this->assertSqlSame('SELECT * FROM products', $this->query()->offset(5)->toSql());
+        // "OFFSET 5" alone is a syntax error for the server, and a huge LIMIT (the MySQL
+        // workaround) makes it ignore the offset - so the offset cannot be honoured at all
+        $this->expectException(\LogicException::class);
+
+        $this->query()->offset(5)->toSql();
+    }
+
+    public function testLimitKeepsAnOffsetSetBefore(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products LIMIT 5,10',
+            $this->query()->offset(5)->limit(10)->toSql()
+        );
+    }
+
+    public function testLimitWithTwoArgumentsReplacesTheOffset(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products LIMIT 7,10',
+            $this->query()->offset(5)->limit(7, 10)->toSql()
+        );
     }
 
     public function testLimitWithTwoArguments(): void

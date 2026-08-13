@@ -742,7 +742,9 @@ class Query
     protected function _sqlSelectColumns(): string
     {
         if ($this->select) {
-            $result = implode(', ', array_map([self::class, 'escapeParam'], $this->select));
+            // the list holds column names and expressions, not values: escaping it would break
+            // every literal inside, e.g. IN(color, 'black') - values go through bind() instead
+            $result = implode(', ', $this->select);
         }
         else {
             $result = '*';
@@ -831,11 +833,16 @@ class Query
      */
     protected function _sqlLimit(): string
     {
-        // an offset without a limit is not valid SQL on its own
         if (isset($this->limit[0])) {
             $offset = isset($this->limit[1]) ? $this->limit[1] . ',' : '';
 
             return $offset . $this->limit[0];
+        }
+        if (isset($this->limit[1])) {
+            // the server has no offset of its own: "OFFSET 5" alone is a syntax error, and the
+            // MySQL workaround of a huge LIMIT makes Manticore ignore the offset altogether,
+            // so silently dropping it would quietly return the first page instead of the asked one
+            throw new \LogicException('offset() needs a limit(): Manticore has no OFFSET without LIMIT');
         }
 
         return '';
@@ -852,11 +859,9 @@ class Query
 
     protected function _sqlHaving(): string
     {
-        if ($this->having) {
-            return implode(',', $this->having);
-        }
-
-        return '';
+        // a single expression by design: "HAVING a AND b", "HAVING (a AND b)" and "HAVING a, b"
+        // are all syntax errors for the server, so having() refuses to collect a second one
+        return $this->having ? (string)reset($this->having) : '';
     }
 
     /**
@@ -1032,23 +1037,26 @@ class Query
     public function selectColumns($columns = '*'): Query
     {
         $this->command = 'SELECT';
-        if (is_string($columns)) {
-            $this->select = Parser::explode(',', $columns, true);
-        }
-        elseif (is_array($columns)) {
-            $this->select = $columns;
+        if (is_string($columns) || is_array($columns)) {
+            $this->select = Parser::columnList([$columns]);
         }
 
         return $this;
     }
 
     /**
+     * select('id, title'), select(['id', 'title']) and select('id', 'title') are the same
+     *
      * @param string|array|null $columns
+     * @param string|array ...$more
      *
      * @return $this
      */
-    public function select($columns = '*'): Query
+    public function select($columns = '*', ...$more): Query
     {
+        if ($more) {
+            return $this->selectColumns(array_merge([$columns], $more));
+        }
 
         return $this->selectColumns($columns);
     }
@@ -1142,49 +1150,95 @@ class Query
 
 
     /**
-     * @param string $names
+     * groupBy('cat'), groupBy('cat, brand'), groupBy(['cat', 'brand']) and groupBy('cat', 'brand')
+     *
+     * @param string|array ...$names
      *
      * @return $this
      */
-    public function groupBy(string $names): Query
+    public function groupBy(...$names): Query
     {
-        $this->group[] = $names;
+        foreach (Parser::columnList($names) as $name) {
+            $this->group[] = $name;
+        }
 
         return $this;
     }
 
     /**
-     * @param string $names
+     * having('count(*) > 1') - a raw expression
+     * having('cnt', '>', 1) - column, operator and value, the value gets quoted
+     * having('cnt', 1) => having('cnt', '=', 1)
+     * having('cnt', 'IN', [2, 3]) and having('cnt', 'BETWEEN', [2, 3]) - array arguments
+     *
+     * Only one expression can be set: the server grammar accepts a single HAVING condition,
+     * so a second call throws instead of building SQL that Manticore rejects.
+     *
+     * @param string $column
+     * @param mixed|null $operator
+     * @param mixed|null $value
      *
      * @return $this
      */
-    public function having(string $names): Query
+    public function having(string $column, $operator = null, $value = null): Query
     {
-        $this->having[] = $names;
+        if ($this->having) {
+            throw new \LogicException('Manticore accepts a single HAVING expression, having() cannot be called twice');
+        }
+        if (func_num_args() === 1) {
+            $this->having[] = $column;
+
+            return $this;
+        }
+        if (func_num_args() === 2) {
+            $value = $operator;
+            $operator = '=';
+        }
+        $op = strtoupper(trim((string)$operator));
+        if (is_array($value)) {
+            $values = array_map([self::class, 'quoteParam'], array_values($value));
+            if ($op === 'BETWEEN' || $op === 'NOT BETWEEN') {
+                $arg = ($values[0] ?? '') . ' AND ' . ($values[1] ?? '');
+            }
+            else {
+                $arg = '(' . implode(',', $values) . ')';
+            }
+        }
+        else {
+            $arg = self::quoteParam($value);
+        }
+        $this->having[] = $column . ' ' . $op . ' ' . $arg;
 
         return $this;
     }
 
     /**
-     * @param string $names
+     * orderBy('price'), orderBy('price', 'desc'), orderBy('price, id') and orderBy(['price', 'id'])
+     *
+     * @param string|array $names
+     * @param string|null $direction "asc" (default) or "desc"
      *
      * @return $this
      */
-    public function orderBy(string $names): Query
+    public function orderBy($names, ?string $direction = null): Query
     {
-        $this->order[] = $names . ' ASC';
+        foreach (Parser::orderList($names, $direction ?? 'ASC') as $order) {
+            $this->order[] = $order;
+        }
 
         return $this;
     }
 
     /**
-     * @param string $names
+     * @param string|array $names
      *
      * @return $this
      */
-    public function orderByDesc(string $names): Query
+    public function orderByDesc($names): Query
     {
-        $this->order[] = $names . ' DESC';
+        foreach (Parser::orderList($names, 'DESC') as $order) {
+            $this->order[] = $order;
+        }
 
         return $this;
     }
@@ -1211,8 +1265,9 @@ class Query
         }
 
         if ($param2 === null) {
-            // limit
-            $this->limit = [(int)$param1, null];
+            // limit - an offset set before is kept, so that offset(20)->limit(10) and
+            // limit(10)->offset(20) mean the same thing
+            $this->limit = [(int)$param1, $this->limit[1] ?? null];
         }
         else {
             // limit, offset
@@ -1724,13 +1779,14 @@ class Query
 
     /**
      * @param string|array|null $columns
+     * @param string|array ...$more
      *
      * @return ResultSet
      */
-    public function search($columns = '*'): ResultSet
+    public function search($columns = '*', ...$more): ResultSet
     {
         if (func_num_args()) {
-            $this->selectColumns($columns);
+            $this->select($columns, ...$more);
         }
         else {
             $this->selectColumns(null);
@@ -1742,13 +1798,14 @@ class Query
 
     /**
      * @param string|array|null $columns
+     * @param string|array ...$more
      *
      * @return mixed|null
      */
-    public function get($columns = '*')
+    public function get($columns = '*', ...$more)
     {
         if (func_num_args()) {
-            $this->selectColumns($columns);
+            $this->select($columns, ...$more);
         }
         else {
             $this->selectColumns(null);
