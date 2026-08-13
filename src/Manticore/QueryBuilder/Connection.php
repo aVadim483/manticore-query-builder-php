@@ -155,6 +155,84 @@ class Connection
     }
 
     /**
+     * ALTER TABLE ... ADD COLUMN
+     *
+     * @param string $tableName
+     * @param string $columnName
+     * @param string|array $type
+     * @param string|array|null $options
+     *
+     * @return ResultSet
+     */
+    public function addColumn(string $tableName, string $columnName, $type, $options = null): ResultSet
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->addColumn($columnName, $type, $options);
+
+        return $this->lastResultSet;
+    }
+
+    /**
+     * ALTER TABLE ... DROP COLUMN
+     *
+     * @param string $tableName
+     * @param string|array $columnName
+     *
+     * @return ResultSet
+     */
+    public function dropColumn(string $tableName, $columnName): ResultSet
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->dropColumn($columnName);
+
+        return $this->lastResultSet;
+    }
+
+    /**
+     * ALTER TABLE ... MODIFY COLUMN
+     *
+     * @param string $tableName
+     * @param string $columnName
+     * @param string $type
+     *
+     * @return ResultSet
+     */
+    public function modifyColumn(string $tableName, string $columnName, string $type): ResultSet
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->modifyColumn($columnName, $type);
+
+        return $this->lastResultSet;
+    }
+
+    /**
+     * ALTER TABLE ... RENAME
+     *
+     * @param string $tableName
+     * @param string $newName
+     *
+     * @return ResultSet
+     */
+    public function rename(string $tableName, string $newName): ResultSet
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->rename($newName);
+
+        return $this->lastResultSet;
+    }
+
+    /**
+     * ALTER TABLE ... <setting>='<value>'
+     *
+     * @param string $tableName
+     * @param array $settings
+     *
+     * @return ResultSet
+     */
+    public function alterSettings(string $tableName, array $settings): ResultSet
+    {
+        $this->lastResultSet = $this->query()->table($tableName)->alterSettings($settings);
+
+        return $this->lastResultSet;
+    }
+
+    /**
      * SHOW TABLES
      *
      * @param string|null $pattern

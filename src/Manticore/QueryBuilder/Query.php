@@ -1471,8 +1471,201 @@ class Query
         // 4. alter add column
 
         $request = $this->parse();
+        $this->_forgetSchema();
 
         return $this->_execQuery($request);
+    }
+
+    /**
+     * Head of every ALTER statement, with a table name that is surely there
+     *
+     * @return string
+     */
+    protected function _sqlAlterTable(): string
+    {
+        $table = $this->_sqlTable();
+        if (!$table) {
+            throw new \LogicException('ALTER needs a table: call table() first');
+        }
+
+        return 'ALTER TABLE ' . $table;
+    }
+
+    /**
+     * Run a chain of ALTER statements
+     *
+     * ALTER is the only command of the builder that may need more than one query: the server
+     * takes exactly one operation per statement (there is no "ADD COLUMN a, ADD COLUMN b"),
+     * so the chain cannot go through parse()/_makeSql()/_execQuery() the way every other
+     * command does. There is no transaction behind it either - the steps that ran before a
+     * failing one stay applied - therefore the chain stops at the first error, and the queries
+     * that really reached the server are reported back in ResultSet::sqlQuery().
+     *
+     * @param string[] $steps
+     * @param string|null $status
+     *
+     * @return ResultSet
+     */
+    protected function _execAlter(array $steps, ?string $status = 'altered'): ResultSet
+    {
+        $this->command = 'ALTER';
+        $done = [];
+        $error = null;
+        $time = microtime(true);
+        foreach ($steps as $sql) {
+            $done[] = $sql;
+            $this->log('info', 'Manticore Query:', ['command' => $this->command, 'query' => $sql]);
+            // _execServiceQuery() keeps the promise of the other service commands:
+            // a failed query lands in ResultSet::error() instead of being thrown
+            $this->_execServiceQuery($sql, $error);
+            if ($error !== null) {
+                break;
+            }
+        }
+        // the set of columns has changed, the cached DESCRIBE of the table is stale now
+        $this->_forgetSchema();
+
+        $result = [
+            'command' => $this->command,
+            'query' => implode('; ', $done),
+            'original' => null,
+            'exec_time' => microtime(true) - $time,
+            'result' => [
+                'type' => 'bool',
+                'data' => $error === null,
+            ],
+        ];
+        if ($error !== null) {
+            $result['response']['error'] = $error;
+        }
+        $this->log('debug', 'Manticore Result:', $result);
+
+        return new ResultSet($result, $status);
+    }
+
+    /**
+     * ALTER TABLE <table> ADD COLUMN <name> <type>
+     *
+     * The type is written the same way as in create():
+     *      addColumn('title', 'text indexed stored')
+     *      addColumn('time', ['type' => 'timestamp', 'engine' => 'columnar'])
+     *      addColumn('article', 'text', 'indexed')
+     * Mind that ADD COLUMN takes fewer options than CREATE TABLE - fast_fetch is not one of
+     * them and is dropped, see SchemaColumn::alterDefinition().
+     *
+     * The server fills the new attribute of the existing rows with an empty value of its type,
+     * and keeps the table unavailable for queries while the column is being added.
+     *
+     * @param string $name
+     * @param string|array $type
+     * @param string|array|null $options
+     *
+     * @return ResultSet
+     */
+    public function addColumn(string $name, $type, $options = null): ResultSet
+    {
+        // a throwaway schema parses "text indexed stored" and ['type' => .., ..] as create() does
+        $column = (new SchemaTable())->addColumn($name, $type, $options);
+
+        return $this->_execAlter([$this->_sqlAlterTable() . ' ADD COLUMN ' . $column->alterDefinition()]);
+    }
+
+    /**
+     * ALTER TABLE <table> DROP COLUMN <name>
+     *
+     * Several names are dropped one statement after another. A field that is a full-text field
+     * and a string attribute at the same time takes two drops of the same name - the first one
+     * removes the attribute, the second one the field:
+     *      dropColumn(['title', 'title'])
+     * The id column cannot be dropped.
+     *
+     * @param string|array $name
+     *
+     * @return ResultSet
+     */
+    public function dropColumn($name): ResultSet
+    {
+        $steps = [];
+        foreach ((array)$name as $column) {
+            $steps[] = $this->_sqlAlterTable() . ' DROP COLUMN ' . $column;
+        }
+        if (!$steps) {
+            throw new \InvalidArgumentException('dropColumn() needs a column name');
+        }
+
+        return $this->_execAlter($steps);
+    }
+
+    /**
+     * ALTER TABLE <table> MODIFY COLUMN <name> <type>
+     *
+     * The server widens an int column to bigint and nothing else: any other change of type is
+     * a drop and an add, i.e. a loss of the data of that column, and has to be asked for
+     * explicitly. A type it does not accept comes back as ResultSet::error().
+     *
+     * @param string $name
+     * @param string $type
+     *
+     * @return ResultSet
+     */
+    public function modifyColumn(string $name, string $type): ResultSet
+    {
+        return $this->_execAlter([$this->_sqlAlterTable() . ' MODIFY COLUMN ' . $name . ' ' . $type]);
+    }
+
+    /**
+     * ALTER TABLE <table> RENAME <new_name>
+     *
+     * The new name goes through the prefix resolution as any other table name, so
+     * table('?products')->rename('?goods') renames <prefix>products to <prefix>goods.
+     * On success the query keeps working with the same table under its new name.
+     *
+     * Renaming is served by Manticore Buddy, i.e. it needs a server with Buddy running.
+     *
+     * @param string $newName
+     *
+     * @return ResultSet
+     */
+    public function rename(string $newName): ResultSet
+    {
+        $result = $this->_execAlter([$this->_sqlAlterTable() . ' RENAME ' . $this->resolveTableName($newName)], 'renamed');
+        if ($result->success()) {
+            $this->table($newName);
+            // the schema was cached under the old name, the new one may be stale as well
+            $this->_forgetSchema();
+        }
+
+        return $result;
+    }
+
+    /**
+     * ALTER TABLE <table> <setting>='<value>'[, <setting>='<value>']
+     *
+     * Changes the full-text settings of a table (charset_table, html_strip, morphology, ...);
+     * the columns are not touched. Unlike ADD/DROP COLUMN, the server takes the whole list of
+     * settings in one statement.
+     *
+     * @param array $settings ['setting' => 'value'], a list value is joined with commas
+     *
+     * @return ResultSet
+     */
+    public function alterSettings(array $settings): ResultSet
+    {
+        $parts = [];
+        foreach ($settings as $name => $value) {
+            if (is_int($name)) {
+                throw new \InvalidArgumentException('alterSettings() needs a "setting => value" map');
+            }
+            if (is_array($value)) {
+                $value = implode(',', $value);
+            }
+            $parts[] = $name . '=\'' . self::escapeParam($value) . '\'';
+        }
+        if (!$parts) {
+            throw new \InvalidArgumentException('alterSettings() needs at least one setting');
+        }
+
+        return $this->_execAlter([$this->_sqlAlterTable() . ' ' . implode(', ', $parts)]);
     }
 
     /**

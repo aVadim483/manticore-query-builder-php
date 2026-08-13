@@ -187,6 +187,74 @@ class Builder
     }
 
     /**
+     * ALTER TABLE ... ADD COLUMN
+     *
+     * @param string $tableName
+     * @param string $columnName
+     * @param string|array $type
+     * @param string|array|null $options
+     *
+     * @return ResultSet
+     */
+    public static function addColumn(string $tableName, string $columnName, $type, $options = null): ResultSet
+    {
+        return self::connection()->addColumn($tableName, $columnName, $type, $options);
+    }
+
+    /**
+     * ALTER TABLE ... DROP COLUMN
+     *
+     * @param string $tableName
+     * @param string|array $columnName
+     *
+     * @return ResultSet
+     */
+    public static function dropColumn(string $tableName, $columnName): ResultSet
+    {
+        return self::connection()->dropColumn($tableName, $columnName);
+    }
+
+    /**
+     * ALTER TABLE ... MODIFY COLUMN
+     *
+     * @param string $tableName
+     * @param string $columnName
+     * @param string $type
+     *
+     * @return ResultSet
+     */
+    public static function modifyColumn(string $tableName, string $columnName, string $type): ResultSet
+    {
+        return self::connection()->modifyColumn($tableName, $columnName, $type);
+    }
+
+    /**
+     * ALTER TABLE ... RENAME
+     *
+     * @param string $tableName
+     * @param string $newName
+     *
+     * @return ResultSet
+     */
+    public static function rename(string $tableName, string $newName): ResultSet
+    {
+        return self::connection()->rename($tableName, $newName);
+    }
+
+    /**
+     * ALTER TABLE ... <setting>='<value>'
+     *
+     * @param string $tableName
+     * @param array $settings
+     *
+     * @return ResultSet
+     */
+    public static function alterSettings(string $tableName, array $settings): ResultSet
+    {
+        return self::connection()->alterSettings($tableName, $settings);
+    }
+
+    /**
      * @param string $tableName
      *
      * @return array

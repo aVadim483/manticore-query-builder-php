@@ -2,6 +2,7 @@
 
 Jump To:
 * [Create table](#create-table)
+* [Alter table](#alter-table)
 * [Drop tables](#drop-tables)
 * [SHOW TABLES](#show-tables)
 * [SHOW CREATE TABLE](#show-create-table)
@@ -64,6 +65,59 @@ $res = ManticoreDb::create('demo_test', $fields, $options);
 $res = ManticoreDb::createIfNotExists('demo_test', $fields, $options);
 if (!ManticoreDb::hasTable('demo_test') {
 $res = ManticoreDb::create('demo_test', $fields, $options);
+}
+```
+
+## Alter table
+
+Columns are added, dropped and widened one at a time -- the server takes a single operation per
+`ALTER` statement.
+
+```php
+// Add a column; the type is written the same way as in create()
+$res = ManticoreDb::table('products')->addColumn('group_id', 'integer');
+$res = ManticoreDb::table('products')->addColumn('title', 'text indexed stored');
+$res = ManticoreDb::table('products')->addColumn('article', 'text', 'indexed');
+$res = ManticoreDb::table('products')->addColumn('time', ['type' => 'timestamp', 'engine' => 'columnar']);
+
+// Drop a column, or several of them
+$res = ManticoreDb::table('products')->dropColumn('price');
+$res = ManticoreDb::table('products')->dropColumn(['price', 'qty']);
+
+// Widen an integer column; int -> bigint is the only change of type the server makes
+$res = ManticoreDb::table('products')->modifyColumn('group_id', 'bigint');
+
+// Change the full-text settings of the table (the columns are not touched)
+$res = ManticoreDb::table('products')->alterSettings(['html_strip' => 1, 'morphology' => ['lemmatize_en_all']]);
+
+// Rename the table (needs a server with Manticore Buddy running)
+$res = ManticoreDb::table('?products')->rename('?goods');
+
+// The same operations from the facade, with the table as the first argument
+$res = ManticoreDb::addColumn('products', 'group_id', 'integer');
+$res = ManticoreDb::dropColumn('products', 'price');
+$res = ManticoreDb::modifyColumn('products', 'group_id', 'bigint');
+$res = ManticoreDb::alterSettings('products', ['html_strip' => 1]);
+$res = ManticoreDb::rename('?products', '?goods');
+```
+
+Things to keep in mind:
+
+* A new scalar attribute is filled with an empty value of its type in the rows that are already
+  there, and the table cannot be queried while the column is being added.
+* The `id` column can neither be dropped nor modified.
+* A field that is a full-text field and a string attribute at the same time takes two drops of
+  the same name: `dropColumn(['title', 'title'])`.
+* `ALTER` is not transactional. When a chain of statements is sent (`dropColumn()` with several
+  names), it stops at the first error, the statements before it stay applied, and
+  `$res->sqlQuery()` reports the queries that really reached the server.
+* Errors are not thrown: `$res->success()` is `false` and `$res->error()` holds the message,
+  just like with the other statements.
+
+```php
+$res = ManticoreDb::table('products')->dropColumn('nonexistent');
+if (!$res->success()) {
+    echo $res->error();
 }
 ```
 

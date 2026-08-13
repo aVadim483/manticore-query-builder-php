@@ -125,15 +125,17 @@ class SchemaColumn
     }
 
     /**
+     * @param bool $fastFetch render the fast_fetch option too
+     *
      * @return string
      */
-    public function __toString()
+    private function render(bool $fastFetch): string
     {
-        $column = $this->name . ' ' . $this->type;
+        $column = trim($this->name . ' ' . $this->type);
         if ($this->engine) {
             $column .= ' engine=\'' . $this->engine . '\'';
         }
-        if ($this->fastFetch !== null) {
+        if ($fastFetch && $this->fastFetch !== null) {
             $column .= ' fast_fetch=\'' . $this->fastFetch . '\'';
         }
         foreach ($this->options as $key => $val) {
@@ -146,6 +148,28 @@ class SchemaColumn
         }
 
         return $column;
+    }
+
+    /**
+     * @return string
+     */
+    public function __toString()
+    {
+        return $this->render(true);
+    }
+
+    /**
+     * Column definition for ALTER TABLE ... ADD COLUMN
+     *
+     * The grammar of ADD COLUMN is narrower than the one of CREATE TABLE: it takes the type,
+     * engine='columnar' and the text flags (indexed/stored/attribute), but knows no fast_fetch,
+     * so that option is left out here instead of being sent and rejected by the server.
+     *
+     * @return string
+     */
+    public function alterDefinition(): string
+    {
+        return $this->render(false);
     }
 
     /**
