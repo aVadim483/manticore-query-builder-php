@@ -16,6 +16,9 @@ class Connection
     private ?LoggerInterface $logger = null;
     private array $logEnabled = [];
 
+    /** @var array schema cache shared by every Query of this connection, see Query::setSchemaPool() */
+    private array $schemaPool = [];
+
 
     /**
      * @param array $config
@@ -55,7 +58,23 @@ class Connection
         $config = $this->config;
         $config['client'] = $this->client;
 
-        return new Query($config, null, $this->logger);
+        $query = new Query($config, null, $this->logger);
+        // one DESCRIBE per table for the whole connection, not per built query
+        $query->setSchemaPool($this->schemaPool);
+
+        return $query;
+    }
+
+    /**
+     * Forget the cached schemas, e.g. after the tables were changed from the outside
+     *
+     * @return $this
+     */
+    public function forgetSchema(): Connection
+    {
+        $this->schemaPool = [];
+
+        return $this;
     }
 
     /**

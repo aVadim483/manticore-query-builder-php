@@ -1385,11 +1385,18 @@ class Query
         $this->command = 'CREATE';
 
         $request = $this->parse();
+        // a table of this name may have existed before with another set of columns
+        $this->_forgetSchema();
 
         return $this->_execQuery($request, 'created');
     }
 
     /**
+     * Bring the table to the given schema (not implemented yet)
+     *
+     * Until it is done, the single operations are available on their own:
+     * addColumn(), dropColumn(), modifyColumn(), rename(), alterSettings().
+     *
      * @param array|null $schema
      *
      * @return ResultSet
@@ -1427,6 +1434,10 @@ class Query
             'query' => $sql,
             'original' => null,
         ];
+        if (!empty($reconfigure)) {
+            // WITH RECONFIGURE re-reads the settings, the column set can differ afterwards
+            $this->_forgetSchema();
+        }
 
         return $this->_execQuery($request, 'truncated');
     }
@@ -1447,6 +1458,7 @@ class Query
             'query' => $sql,
             'original' => null,
         ];
+        $this->_forgetSchema();
 
         return $this->_execQuery($request, 'dropped');
     }
@@ -1627,6 +1639,37 @@ class Query
         }
 
         return new ResultSet($result);
+    }
+
+    /**
+     * Share the schema cache of the connection.
+     *
+     * DESCRIBE is asked for before every INSERT/UPDATE/REPLACE and after every SELECT that
+     * returns rows, while Connection::query() builds a fresh Query for each call - so a cache
+     * living in this object alone would never survive a single request. The pool is taken by
+     * reference, which lets every Query of one connection fill and read the same one.
+     *
+     * @param array $pool
+     *
+     * @return $this
+     */
+    public function setSchemaPool(array &$pool): Query
+    {
+        $this->indexPool = &$pool;
+
+        return $this;
+    }
+
+    /**
+     * Drop the cached schema of a table, after a statement that may have changed it.
+     *
+     * @param string|null $tableName the table of table() by default
+     *
+     * @return void
+     */
+    protected function _forgetSchema(?string $tableName = null): void
+    {
+        unset($this->indexPool[$tableName ?? $this->_sqlTable()]);
     }
 
     /**

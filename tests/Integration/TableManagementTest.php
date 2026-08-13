@@ -134,6 +134,23 @@ final class TableManagementTest extends IntegrationTestCase
         $this->assertEquals(0, $status['indexed_documents']);
     }
 
+    public function testRecreatedTableIsDescribedAgain(): void
+    {
+        // the schema cache lives in the connection now, so a table recreated with other
+        // columns must not be read back through the columns of its previous incarnation
+        $table = $this->createTable(['title' => 'text', 'qty' => 'integer'], 'recreate');
+        ManticoreDb::table($table)->insert(['title' => 'first', 'qty' => 7]);
+        $before = ManticoreDb::table($table)->first();
+        $this->assertSame(7, $before['qty']);
+
+        ManticoreDb::drop($table);
+        ManticoreDb::create($table, ['title' => 'text', 'qty' => 'multi']);
+        ManticoreDb::table($table)->insert(['title' => 'second', 'qty' => [1, 2, 3]]);
+
+        $after = ManticoreDb::table($table)->first();
+        $this->assertSame([1, 2, 3], $after['qty'], 'the new column type must be used');
+    }
+
     public function testTableDescribeReportsColumnTypes(): void
     {
         $table = $this->createTable($this->fields(), 'describe');
