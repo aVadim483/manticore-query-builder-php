@@ -136,6 +136,7 @@ $res = ManticoreDb::tableDescribe('test');
 ```php
 $res = ManticoreDb::sql('SHOW TABLE test STATUS')->get();
 $res = ManticoreDb::table('test')->status()->result();
+$res = ManticoreDb::table('other')->status('test')->result(); // the argument wins over table()
 $res = ManticoreDb::tableStatus('test');
 // Result is array with variables describing the status of the table 
 ```
@@ -145,6 +146,7 @@ $res = ManticoreDb::tableStatus('test');
 ```php
 $res = ManticoreDb::sql('SHOW TABLE test SETTINGS')->get();
 $res = ManticoreDb::table('test')->settings()->result();
+$res = ManticoreDb::table('other')->settings('test')->result(); // the argument wins over table()
 $res = ManticoreDb::tableSettings('test');
 // Result is array with settings of the table 
 ```

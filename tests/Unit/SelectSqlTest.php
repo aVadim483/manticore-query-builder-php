@@ -47,6 +47,17 @@ final class SelectSqlTest extends UnitTestCase
         );
     }
 
+    public function testSelectRunsWithoutMetaInTheAnswer(): void
+    {
+        // SHOW META may come back without a rowset: that must leave meta empty, not raise
+        // a PHP warning which _execQuery() would then log as a failed query
+        $result = $this->query()->where('price', '>', 1)->search();
+
+        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertSame([], $result->meta());
+        $this->assertSame([], $result->result());
+    }
+
     public function testSelectAcceptsSeveralArguments(): void
     {
         // select('id', 'title') must not drop everything past the first argument

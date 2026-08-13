@@ -134,6 +134,28 @@ final class TableManagementTest extends IntegrationTestCase
         $this->assertEquals(0, $status['indexed_documents']);
     }
 
+    public function testStatusUsesItsArgumentNotTheTableOfTheQuery(): void
+    {
+        $empty = $this->createTable($this->fields(), 'status_arg');
+        $filled = $this->createTable($this->fields(), 'status_other');
+        ManticoreDb::table($filled)->insert(['title' => 'one']);
+
+        // the query is built on the filled table but asks about the empty one
+        $status = ManticoreDb::table($filled)->status($empty)->variables();
+
+        $this->assertSame(0, (int)$status['indexed_documents']);
+    }
+
+    public function testSettingsUsesItsArgumentNotTheTableOfTheQuery(): void
+    {
+        $asked = $this->createTable($this->fields(), 'settings_arg', ['morphology' => 'icu_chinese']);
+        $other = $this->createTable($this->fields(), 'settings_other');
+
+        $settings = ManticoreDb::table($other)->settings($asked)->variables();
+
+        $this->assertSame('icu_chinese', $settings['morphology'] ?? null);
+    }
+
     public function testRecreatedTableIsDescribedAgain(): void
     {
         // the schema cache lives in the connection now, so a table recreated with other

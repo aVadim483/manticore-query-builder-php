@@ -411,7 +411,9 @@ class Query
                 }
                 $meta = $this->client->select('SHOW META');
                 $result['meta'] = [];
-                foreach ($meta['data'][0] as $item) {
+                // an answer without a rowset leaves meta empty rather than raising a warning
+                // that _execQuery() would catch and report as a failed query
+                foreach ($meta['data'][0] ?? [] as $item) {
                     if ($item['Variable_name'] === 'time') {
                         $value = (float)$item['Value'];
                     }
@@ -1558,12 +1560,15 @@ class Query
     /**
      * SHOW TABLE $tableName STATUS
      *
-     * @param string $tableName
+     * @param string|null $tableName the table to ask about, the one of table() by default
      *
      * @return ResultSet
      */
-    public function status(string $tableName): ResultSet
+    public function status(?string $tableName = null): ResultSet
     {
+        if ($tableName !== null) {
+            $this->table($tableName);
+        }
         $this->command = 'STATUS';
         $sql = 'SHOW TABLE ' . $this->_sqlTable() . ' STATUS';
         $request = [
@@ -1578,12 +1583,15 @@ class Query
     /**
      * SHOW TABLE $tableName SETTINGS
      *
-     * @param string $tableName
+     * @param string|null $tableName the table to ask about, the one of table() by default
      *
      * @return ResultSet
      */
-    public function settings(string $tableName): ResultSet
+    public function settings(?string $tableName = null): ResultSet
     {
+        if ($tableName !== null) {
+            $this->table($tableName);
+        }
         $this->command = 'SETTINGS';
         $sql = 'SHOW TABLE ' . $this->_sqlTable() . ' SETTINGS';
         $request = [
