@@ -40,57 +40,90 @@ class QueryCondition
      * @param mixed|null $arg1
      * @param mixed|null $arg2
      * @param int|null $level
+     * @param int|null $argsCount how many arguments the caller actually passed to where()
      *
      * @return QueryCondition|QueryConditionSet
      */
-    public static function create($bool, $field, $arg1 = null, $arg2 = null, ?int $level = 0)
+    public static function create($bool, $field, $arg1 = null, $arg2 = null, ?int $level = 0, ?int $argsCount = null)
     {
+        if ($argsCount === null) {
+            // called without the count (directly, not through where()): guess it the old way,
+            // which cannot tell where($field, $op, null) from where($field, $op)
+            $argsCount = ($arg1 === null) ? 1 : (($arg2 === null) ? 2 : 3);
+        }
+
         if (is_callable($field)) {
             $condition = new QueryConditionSet($bool, $level);
             $field($condition);
 
             return $condition;
         }
-        if ($arg1 !== null) {
-            if ($arg2 === null) {
-                $arg2 = $arg1;
-                $arg1 = '=';
-            }
-            $op = strtoupper($arg1);
-            if (is_array($arg2)) {
-                $arg = array_map([self::class, '_escape_string'], $arg2);
-            }
-            else {
-                $arg = self::_escape_string($arg2);
+
+        if (is_array($field)) {
+            // where(['color' => 'red', 'price' => 10]) and where([['price', '>', 10], ['color', 'red']])
+            $condition = new QueryConditionSet($bool, $level);
+            foreach ($field as $key => $value) {
+                if (is_array($value)) {
+                    $condition->where(...array_values($value));
+                }
+                else {
+                    $condition->where($key, $value);
+                }
             }
 
-            if ($op === 'IN') {
-                $condition = new self($bool, $field, 'IN', '(' . implode(',', (array)$arg) . ')');
-            }
-            elseif ($op === 'NOT IN') {
-                $condition = new self($bool, $field, 'NOT IN', '(' . implode(',', (array)$arg) . ')');
-            }
-            elseif ($op === 'BETWEEN') {
-                $condition = new self($bool, $field, 'BETWEEN', $arg[0] . ' AND ' . $arg[1]);
-            }
-            elseif ($op === 'NOT BETWEEN') {
-                $condition = new self($bool, $field, 'NOT BETWEEN', $arg[0] . ' AND ' . $arg[1]);
-            }
-            elseif ($op === 'IS NULL') {
-                $condition = new self($bool, $field, 'IS NULL');
-            }
-            elseif ($op === 'IS NOT NULL') {
-                $condition = new self($bool, $field, 'IS NOT NULL');
-            }
-            else {
-                $condition = new self($bool, $field, $op, $arg);
-            }
+            return $condition;
+        }
+
+        if ($argsCount < 2) {
+            // a raw expression: where('color_filter=1')
+            return new self($bool, $field, null, null);
+        }
+
+        if ($argsCount === 2) {
+            // where($field, $value) is the shortcut for where($field, '=', $value)
+            $op = '=';
+            $value = $arg1;
         }
         else {
-            $condition = new self($bool, $field, null, null);
+            $op = strtoupper(trim((string)$arg1));
+            $value = $arg2;
         }
 
-        return $condition;
+        if ($op === 'IS NULL' || $op === 'IS NOT NULL') {
+            // the unary operators, passed with the Query::NO_ARG marker by whereNull() & co
+            return new self($bool, $field, $op);
+        }
+
+        if ($value === null) {
+            // comparing against null is how IS NULL is asked for in the three-argument form;
+            // the two-argument where($field, 'IS NULL') still compares against the string
+            if ($op === '=') {
+                return new self($bool, $field, 'IS NULL');
+            }
+            if ($op === '!=' || $op === '<>') {
+                return new self($bool, $field, 'IS NOT NULL');
+            }
+
+            throw new \InvalidArgumentException('NULL cannot be compared with the operator "' . $arg1 . '"');
+        }
+
+        if (is_array($value)) {
+            $arg = array_map([self::class, '_escape_string'], $value);
+        }
+        else {
+            $arg = self::_escape_string($value);
+        }
+
+        if ($op === 'IN' || $op === 'NOT IN') {
+            return new self($bool, $field, $op, '(' . implode(',', (array)$arg) . ')');
+        }
+        if ($op === 'BETWEEN' || $op === 'NOT BETWEEN') {
+            $arg = array_values((array)$arg);
+
+            return new self($bool, $field, $op, ($arg[0] ?? '') . ' AND ' . ($arg[1] ?? ''));
+        }
+
+        return new self($bool, $field, $op, $arg);
     }
 
     /**

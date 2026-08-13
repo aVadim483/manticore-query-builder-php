@@ -96,6 +96,19 @@ $res = ManticoreDb::table('?products')->whereBetween('price', [999, 1100])->get(
 
 // SELECT * FROM ?products WHERE updated_at IS NOT NULL;
 $res = ManticoreDb::table('?products')->whereNotNull('updated_at')->get();
+
+// SELECT * FROM ?products WHERE info.color IS NULL;
+// a null value asks for IS NULL, in both the two- and the three-argument form
+$res = ManticoreDb::table('?products')->where('info.color', null)->get();
+$res = ManticoreDb::table('?products')->where('info.color', '=', null)->get();
+// ...and "!=" / "<>" with null gives IS NOT NULL. Any other operator with null throws
+// an InvalidArgumentException: "price > null" has no meaning to compile into SQL.
+
+// SELECT * FROM ?products WHERE (color='red' AND price=10);
+// an array is a set of conditions joined with AND
+$res = ManticoreDb::table('?products')->where(['color' => 'red', 'price' => 10])->get();
+// the same with explicit operators
+$res = ManticoreDb::table('?products')->where([['price', '>', 10], ['color', 'red']])->get();
 ```
 Sometimes you may need to group several "WHERE" clauses within parentheses in order to achieve your query's desired logical grouping.
 To accomplish this, you may pass a closure to the ```where()``` method:
@@ -115,15 +128,30 @@ $res = ManticoreDb::table('products')
     })
     ->get();
 ```
+Inside the closure the same methods are available as on the builder itself, including
+```whereIn()```, ```whereNull()``` and ```whereBetween()```:
+```php
+$res = ManticoreDb::table('products')
+    ->where(function($condition) {
+        $condition->whereIn('country', ['de', 'us']);
+        $condition->orWhereNull('info.color');
+    })
+    ->get();
+```
+
 You can use methods:
 * where(\<field>, \<condition>, \<value>)
 * where(\<field>, \<value>) => where(\<field>, '=', \<value>)
+* where(\<field>, null) => where(\<field>, 'IS NULL')
+* where(\<array>) - a set of conditions joined with AND
 * where(\<callback>)
 * andWhere(\<field>, \<condition>, \<value>)
 * andWhere(\<field>, \<value>) => andWhere(\<field>, '=', \<value>)
+* andWhere(\<array>)
 * andWhere(\<callback>)
 * orWhere(\<field>, \<condition>, \<value>)
 * orWhere(\<field>, \<value>) => where(\<field>, '=', \<value>)
+* orWhere(\<array>)
 * orWhere(\<callback>)
 * whereNull(\<field>)
 * andWhereNull(\<field>)
@@ -132,9 +160,9 @@ You can use methods:
 * andWhereNotNull(\<field>)
 * orWhereNotNull(\<field>)
 
-Use the dedicated methods for ```IS NULL``` / ```IS NOT NULL```: in the two-argument form
-```where('updated_at', 'IS NULL')``` the second argument is a value, not an operator,
-so that call compares the column with the string ```'IS NULL'```.
+Ask for ```IS NULL``` / ```IS NOT NULL``` either by the dedicated methods or by a null value:
+in the two-argument form ```where('updated_at', 'IS NULL')``` the second argument is a value,
+not an operator, so that call compares the column with the string ```'IS NULL'```.
 Note also that ```IS NULL``` applies to attributes (including JSON keys such as
 ```info.color```), not to full-text fields.
 * whereIn(\<field>, \<array>)
@@ -144,8 +172,10 @@ Note also that ```IS NULL``` applies to attributes (including JSON keys such as
 * andWhereNotIn(\<field>, \<array>)
 * orWhereNotIn(\<field>, \<array>)
 * whereBetween(\<field>, \<array>)
+* andWhereBetween(\<field>, \<array>)
 * orWhereBetween(\<field>, \<array>)
 * whereNotBetween(\<field>, \<array>)
+* andWhereNotBetween(\<field>, \<array>)
 * orWhereNotBetween(\<field>, \<array>)
 
 

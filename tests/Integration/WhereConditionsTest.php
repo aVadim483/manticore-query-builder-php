@@ -190,6 +190,44 @@ final class WhereConditionsTest extends IntegrationTestCase
         $this->assertSame([1], $this->ids($withValue));
     }
 
+    public function testNullValueIsSentAsIsNull(): void
+    {
+        // where($field, null) and where($field, '=', null) must reach the server as IS NULL
+        $table = $this->createTable(['title' => 'text', 'info' => 'json'], 'nullvalue');
+        ManticoreDb::table($table)->insert([
+            ['id' => 1, 'title' => 'with', 'info' => ['x' => 1]],
+            ['id' => 2, 'title' => 'without', 'info' => ['y' => 2]],
+        ]);
+
+        $shortForm = ManticoreDb::table($table)->where('info.x', null)->get();
+        $longForm = ManticoreDb::table($table)->where('info.x', '=', null)->get();
+        $notNull = ManticoreDb::table($table)->where('info.x', '!=', null)->get();
+
+        $this->assertSame([2], $this->ids($shortForm));
+        $this->assertSame([2], $this->ids($longForm));
+        $this->assertSame([1], $this->ids($notNull));
+    }
+
+    public function testConditionsFromArray(): void
+    {
+        $rows = ManticoreDb::table($this->table)->where(['country' => 'DE', 'price' => 200.00])->get();
+
+        $this->assertSame([2], $this->ids($rows));
+    }
+
+    public function testGroupedConditionsUseTheWholeWhereFamily(): void
+    {
+        $rows = ManticoreDb::table($this->table)
+            ->where(function ($condition) {
+                $condition->whereIn('country', ['UK']);
+                $condition->orWhereBetween('price', [100.00, 100.00]);
+            })
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame([1, 5, 6], $this->ids($rows));
+    }
+
     public function testOrderByDescWithLimit(): void
     {
         $rows = ManticoreDb::table($this->table)

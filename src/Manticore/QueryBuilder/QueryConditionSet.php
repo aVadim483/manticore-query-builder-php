@@ -4,6 +4,8 @@ namespace avadim\Manticore\QueryBuilder;
 
 class QueryConditionSet
 {
+    use WhereConditionsTrait;
+
     private ?string $bool = '';
     private array $operands = [];
     private array $params = [];
@@ -17,21 +19,35 @@ class QueryConditionSet
     }
 
 
-    protected function _add(string $bool, $field, $arg1 = null, $arg2 = null)
+    /**
+     * @param string $bool
+     * @param array $args the arguments where() was called with, as they were passed
+     *
+     * @return void
+     */
+    protected function _add(string $bool, array $args)
     {
-        if (!$this->operands) {
-            //$bool = '';
-        }
         if (!$this->bool) {
             $this->bool = $bool;
         }
-        $this->operands[] = QueryCondition::create($bool, $field, $arg1, $arg2, $this->level + 1);
+        // the number of arguments is what tells where($field, $op, null) from where($field, $op)
+        $args = array_slice(array_values($args), 0, 3);
+        $this->operands[] = QueryCondition::create(
+            $bool,
+            $args[0] ?? null,
+            $args[1] ?? null,
+            $args[2] ?? null,
+            $this->level + 1,
+            count($args)
+        );
     }
 
     /**
      * Usage:
      *      where('field', '>', 123)
      *      where('field', 123) - equal to where('field', '=', 123)
+     *      where('field', null) - equal to where('field', 'IS NULL')
+     *      where(['field' => 123, 'other' => 'value'])
      *      where(function ($condition) { $condition->where(...); })
      *
      * @param mixed $field
@@ -42,15 +58,15 @@ class QueryConditionSet
      */
     public function where($field, $arg1 = null, $arg2 = null)
     {
-        $this->_add('AND', $field, $arg1, $arg2);
+        $this->_add('AND', func_get_args());
 
         return $this;
     }
 
 
-    public function andWhere($field, $arg1 = null, $arg2 = null, $level = 0)
+    public function andWhere($field, $arg1 = null, $arg2 = null)
     {
-        $this->_add('AND', $field, $arg1, $arg2);
+        $this->_add('AND', func_get_args());
 
         return $this;
     }
@@ -58,7 +74,7 @@ class QueryConditionSet
 
     public function orWhere($field, $arg1 = null, $arg2 = null)
     {
-        $this->_add('OR', $field, $arg1, $arg2);
+        $this->_add('OR', func_get_args());
 
         return $this;
     }

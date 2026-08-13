@@ -210,11 +210,94 @@ final class WhereSqlTest extends UnitTestCase
         );
     }
 
+    public function testNullValueMeansIsNull(): void
+    {
+        // both the two- and the three-argument form: passing null asks for IS NULL, it does
+        // not turn the operator into a value
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE (title IS NULL)',
+            $this->query()->where('title', null)->toSql()
+        );
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE (title IS NULL)',
+            $this->query()->where('title', '=', null)->toSql()
+        );
+    }
+
+    public function testNullValueWithNotEqualsMeansIsNotNull(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE (title IS NOT NULL)',
+            $this->query()->where('title', '!=', null)->toSql()
+        );
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE (title IS NOT NULL)',
+            $this->query()->where('title', '<>', null)->toSql()
+        );
+    }
+
+    public function testNullValueWithAnOrderingOperatorIsRejected(): void
+    {
+        // "price > null" has no meaning, and silently comparing against the string "null"
+        // or against the operator itself is worse than saying so
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->query()->where('price', '>', null);
+    }
+
+    public function testWhereFromArrayOfPairs(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE ((color='red')AND(price=10))",
+            $this->query()->where(['color' => 'red', 'price' => 10])->toSql()
+        );
+    }
+
+    public function testWhereFromArrayOfConditions(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE ((price>10)AND(color='red'))",
+            $this->query()->where([['price', '>', 10], ['color', 'red']])->toSql()
+        );
+    }
+
+    public function testWhereFromArrayKeepsNullAsIsNull(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE ((color='red')AND(title IS NULL))",
+            $this->query()->where(['color' => 'red', 'title' => null])->toSql()
+        );
+    }
+
+    public function testOrWhereFromArray(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE (a=1)OR((color='red')AND(price=10))",
+            $this->query()->where('a', 1)->orWhere(['color' => 'red', 'price' => 10])->toSql()
+        );
+    }
+
     public function testWhereBetween(): void
     {
         $this->assertSqlSame(
             'SELECT * FROM products WHERE (price BETWEEN 10 AND 20)',
             $this->query()->whereBetween('price', [10, 20])->toSql()
+        );
+    }
+
+    public function testAndWhereBetween(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE (a=1)AND(price BETWEEN 10 AND 20)',
+            $this->query()->where('a', 1)->andWhereBetween('price', [10, 20])->toSql()
+        );
+    }
+
+    public function testAndWhereNotBetween(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE (a=1)AND(price NOT BETWEEN 10 AND 20)',
+            $this->query()->where('a', 1)->andWhereNotBetween('price', [10, 20])->toSql()
         );
     }
 
@@ -252,6 +335,47 @@ final class WhereSqlTest extends UnitTestCase
             ->toSql();
 
         $this->assertSqlSame("SELECT * FROM products WHERE ((country='de')OR(price>150))", $sql);
+    }
+
+    public function testNestedConditionsOfferTheWholeWhereFamily(): void
+    {
+        // the closure gets the same vocabulary as the builder itself
+        $sql = $this->query()
+            ->where(function ($condition) {
+                $condition->whereIn('country', ['de', 'us']);
+                $condition->orWhereNull('info.x');
+                $condition->orWhereBetween('price', [10, 20]);
+            })
+            ->toSql();
+
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE ((country IN('de','us'))OR(info.x IS NULL)OR(price BETWEEN 10 AND 20))",
+            $sql
+        );
+    }
+
+    public function testNestedConditionsUnderstandNullValues(): void
+    {
+        $sql = $this->query()
+            ->where(function ($condition) {
+                $condition->where('title', null);
+                $condition->orWhere('price', '=', null);
+            })
+            ->toSql();
+
+        $this->assertSqlSame('SELECT * FROM products WHERE ((title IS NULL)OR(price IS NULL))', $sql);
+    }
+
+    public function testNestedConditionsFromArray(): void
+    {
+        $sql = $this->query()
+            ->where('x', 0)
+            ->orWhere(function ($condition) {
+                $condition->where(['a' => 1, 'b' => 2]);
+            })
+            ->toSql();
+
+        $this->assertSqlSame('SELECT * FROM products WHERE (x=0)OR((a=1)AND(b=2))', $sql);
     }
 
     public function testNestedConditionsAfterPlainCondition(): void

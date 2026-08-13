@@ -10,6 +10,8 @@ use Psr\Log\LoggerInterface;
 
 class Query
 {
+    use WhereConditionsTrait;
+
     /**
      * Placeholder for the argument of a unary operator.
      *
@@ -19,7 +21,7 @@ class Query
      * from kicking in, which is why where($field, 'IS NULL') still compares against the
      * string "IS NULL".
      */
-    private const NO_ARG = false;
+    public const NO_ARG = false;
 
     private array $config;
     private ?array $table;
@@ -684,6 +686,13 @@ class Query
 
 
     /**
+     * Usage:
+     *      where('field', '>', 123)
+     *      where('field', 123) - equal to where('field', '=', 123)
+     *      where('field', null) - equal to where('field', 'IS NULL')
+     *      where(['field' => 123, 'other' => 'value'])
+     *      where(function ($condition) { $condition->where(...); })
+     *
      * @param $field
      * @param $arg1
      * @param $arg2
@@ -692,7 +701,9 @@ class Query
      */
     public function where($field, $arg1 = null, $arg2 = null): Query
     {
-        $this->conditions->andWhere($field, $arg1, $arg2);
+        // the arguments are forwarded as they came: their number is what tells
+        // where($field, $op, null) from where($field, $op)
+        $this->conditions->andWhere(...func_get_args());
 
         return $this;
     }
@@ -706,7 +717,7 @@ class Query
      */
     public function andWhere($field, $arg1 = null, $arg2 = null): Query
     {
-        $this->conditions->andWhere($field, $arg1, $arg2);
+        $this->conditions->andWhere(...func_get_args());
 
         return $this;
     }
@@ -720,179 +731,9 @@ class Query
      */
     public function orWhere($field, $arg1 = null, $arg2 = null): Query
     {
-        $this->conditions->orWhere($field, $arg1, $arg2);
+        $this->conditions->orWhere(...func_get_args());
 
         return $this;
-    }
-
-    /**
-     * @param $field
-     *
-     * @return $this
-     */
-    public function whereNull($field): Query
-    {
-        return $this->andWhere($field, 'IS NULL', self::NO_ARG);
-    }
-
-    /**
-     * @param $field
-     *
-     * @return $this
-     */
-    public function andWhereNull($field): Query
-    {
-        return $this->andWhere($field, 'IS NULL', self::NO_ARG);
-    }
-
-    /**
-     * @param $field
-     *
-     * @return $this
-     */
-    public function orWhereNull($field): Query
-    {
-        return $this->orWhere($field, 'IS NULL', self::NO_ARG);
-    }
-
-    /**
-     * @param $field
-     *
-     * @return $this
-     */
-    public function whereNotNull($field): Query
-    {
-        return $this->andWhere($field, 'IS NOT NULL', self::NO_ARG);
-    }
-
-    /**
-     * @param $field
-     *
-     * @return $this
-     */
-    public function andWhereNotNull($field): Query
-    {
-        return $this->andWhere($field, 'IS NOT NULL', self::NO_ARG);
-    }
-
-    /**
-     * @param $field
-     *
-     * @return $this
-     */
-    public function orWhereNotNull($field): Query
-    {
-        return $this->orWhere($field, 'IS NOT NULL', self::NO_ARG);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function whereIn($field, array $arg): Query
-    {
-        return $this->andWhere($field, 'IN', $arg);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function andWhereIn($field, array $arg): Query
-    {
-        return $this->andWhere($field, 'IN', $arg);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function orWhereIn($field, array $arg): Query
-    {
-        return $this->orWhere($field, 'IN', $arg);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function whereNotIn($field, array $arg): Query
-    {
-        return $this->andWhere($field, 'NOT IN', $arg);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function andWhereNotIn($field, array $arg): Query
-    {
-        return $this->andWhere($field, 'NOT IN', $arg);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function orWhereNotIn($field, array $arg): Query
-    {
-        return $this->orWhere($field, 'NOT IN', $arg);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function whereBetween($field, array $arg): Query
-    {
-        return $this->where($field, 'BETWEEN', $arg);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function orWhereBetween($field, array $arg): Query
-    {
-        return $this->orWhere($field, 'BETWEEN', $arg);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function whereNotBetween($field, array $arg): Query
-    {
-        return $this->where($field, 'NOT BETWEEN', $arg);
-    }
-
-    /**
-     * @param $field
-     * @param array $arg
-     *
-     * @return $this
-     */
-    public function orWhereNotBetween($field, array $arg): Query
-    {
-        return $this->orWhere($field, 'NOT BETWEEN', $arg);
     }
 
     /**
