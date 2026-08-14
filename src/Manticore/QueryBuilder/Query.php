@@ -44,6 +44,10 @@ class Query
     private array $update = [];
 
     private ?string $match = null;
+
+    /** @var bool|null whether to select weight(); null decides by the presence of a match() */
+    private ?bool $score = null;
+
     private array $group = [];
     private array $having = [];
     private array $order = [];
@@ -214,23 +218,38 @@ class Query
     }
 
     /**
-     * @param bool|null $substParams
+     * The SQL of the query, with the named parameters of bind() left as they are.
+     *
+     * Values of the conditions are part of the statement anyway - they are put in when it is
+     * built - so this differs from toRawSql() only for a query that uses bind().
+     *
+     * @param bool|null $substParams substitute the named parameters, i.e. answer as toRawSql()
+     *
      * @return string
      */
     public function toSql(?bool $substParams = false): string
     {
         $querySet = $this->parse();
-        if (!empty($querySet['params'])) {
-            $subst = [];
-            foreach ($querySet['params'] as $key => $val) {
-                //$subst[$key] = self::quoteParam($val);
-                $subst[$key] = $val;
-            }
 
-            return str_replace(array_keys($subst), array_values($subst), $querySet['query']);
+        if ($substParams && !empty($querySet['params'])) {
+            return str_replace(
+                array_keys($querySet['params']),
+                array_values($querySet['params']),
+                $querySet['query']
+            );
         }
 
         return $querySet['query'];
+    }
+
+    /**
+     * The SQL of the query as it goes to the server, with the named parameters put in
+     *
+     * @return string
+     */
+    public function toRawSql(): string
+    {
+        return $this->toSql(true);
     }
 
     /**
@@ -342,12 +361,16 @@ class Query
                 $response = $this->client->insert($parsedSql['query'], $this->params);
             }
             elseif ($parsedSql['command'] === 'SELECT') {
+                $generated = [];
                 if (!$this->select) {
-                    $query = 'SELECT id as _id, weight() as _score, ' . substr($parsedSql['query'], 6);
+                    $generated[] = 'id as _id';
                 }
-                else {
-                    $query = $parsedSql['query'];
+                if ($this->_needScore()) {
+                    $generated[] = 'weight() as _score';
                 }
+                $query = $generated
+                    ? 'SELECT ' . implode(', ', $generated) . ', ' . substr($parsedSql['query'], 6)
+                    : $parsedSql['query'];
                 $response = $this->client->select($query, $this->params);
             }
             else {
@@ -556,6 +579,46 @@ class Query
         $this->match = $match;
 
         return $this;
+    }
+
+    /**
+     * Select weight() as the "_score" column even without a full-text match.
+     *
+     * Useful when the weight comes from somewhere else than a match - a custom ranker, say.
+     *
+     * @return $this
+     */
+    public function withScore(): Query
+    {
+        $this->score = true;
+
+        return $this;
+    }
+
+    /**
+     * Leave the "_score" column out even of a full-text query.
+     *
+     * Useful when the rows are handed over as they are - to a JSON API, for one - and a column
+     * that is not in the table gets in the way.
+     *
+     * @return $this
+     */
+    public function withoutScore(): Query
+    {
+        $this->score = false;
+
+        return $this;
+    }
+
+    /**
+     * Without a full-text match weight() is 1 for every row, so the column is only selected
+     * when a match is there - or when it was asked for explicitly.
+     *
+     * @return bool
+     */
+    protected function _needScore(): bool
+    {
+        return $this->score ?? ($this->match !== null && $this->match !== '');
     }
 
     // +++ OPTIONS +++ //

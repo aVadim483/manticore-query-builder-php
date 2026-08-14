@@ -25,8 +25,13 @@ $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 110
 foreach($res->result() as $id => $row) {
     // $id - ID of found record
     // $row - array <field_name> => <field_value>
-    // also each row has two additional fields: _id and _score 
+    // plus the generated "_id" field, and "_score" when the query has a match()
 }
+
+// weight() is 1 for every row of a query without a match(), so "_score" is only selected
+// for a full-text one. Both ways round it can be asked for explicitly:
+$res = ManticoreDb::table('?products')->where('price', '>', 1100)->withScore()->get();
+$res = ManticoreDb::table('?products')->match('galaxy')->withoutScore()->get();
 
 // Selects specified columns and returns object of ResultSet
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->search(['name', 'price']);
@@ -59,6 +64,21 @@ $names = ManticoreDb::table('?products')->match('galaxy')->pluck('name', 'id');
 ```
 
 Only the columns asked for are selected, so `pluck()` overrides an earlier `select()`.
+
+## Looking at the SQL
+
+```php
+$query = ManticoreDb::table('?products')->where('country=:country')->bind([':country' => 'de']);
+
+// The statement as it is built, with the named parameters of bind() left in place
+$query->toSql();      // SELECT * FROM test_products WHERE (country=:country)
+
+// The statement as it goes to the server, with the parameters put in
+$query->toRawSql();   // SELECT * FROM test_products WHERE (country=de)
+```
+
+Values of the conditions are part of the statement either way — they are put in when it is built,
+not bound — so the two differ only for a query that uses `bind()`.
 
 ## Select statements
 

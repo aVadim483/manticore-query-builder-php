@@ -423,14 +423,41 @@ final class WhereSqlTest extends UnitTestCase
         );
     }
 
-    public function testNamedParameterIsSubstitutedIntoCondition(): void
+    /**
+     * toSql() shows the statement with its named parameters, the way it is built
+     */
+    public function testNamedParameterIsKeptInToSql(): void
     {
         $sql = $this->query()
             ->where('country=:country')
             ->bind([':country' => 'de'])
             ->toSql();
 
-        $this->assertSqlSame('SELECT * FROM products WHERE (country=de)', $sql);
+        $this->assertSqlSame('SELECT * FROM products WHERE (country=:country)', $sql);
+    }
+
+    /**
+     * ... and toRawSql() with the parameters put in, the way it goes to the server
+     */
+    public function testNamedParameterIsSubstitutedIntoRawSql(): void
+    {
+        $query = $this->query()
+            ->where('country=:country')
+            ->bind([':country' => 'de']);
+
+        $this->assertSqlSame('SELECT * FROM products WHERE (country=de)', $query->toRawSql());
+        $this->assertSqlSame($query->toRawSql(), $query->toSql(true));
+    }
+
+    /**
+     * Values of the conditions are part of the statement either way: they are put in when it
+     * is built, not bound
+     */
+    public function testWithoutBindBothFormsAreTheSame(): void
+    {
+        $query = $this->query()->where('country', 'de');
+
+        $this->assertSqlSame($query->toSql(), $query->toRawSql());
     }
 
     public function testNamedParameterIsNotQuotedAsValue(): void
