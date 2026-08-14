@@ -300,6 +300,17 @@ final class QueryHelpersTest extends IntegrationTestCase
         $this->assertCount(5, ManticoreDb::table($this->table)->inRandomOrder()->get());
     }
 
+    /**
+     * A column of a computed expression comes back named "1", i.e. an int key - which the
+     * type casting used to choke on
+     */
+    public function testAQueryWithoutColumnsOfATable(): void
+    {
+        $result = ManticoreDb::connection()->sql('SELECT 1')->exec();
+
+        $this->assertTrue($result->success(), (string)$result->error());
+    }
+
     public function testWhereHelpersFilterTheRows(): void
     {
         $this->fill();

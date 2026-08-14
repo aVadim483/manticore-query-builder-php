@@ -302,7 +302,8 @@ class Query
 
                 }
                 else {
-                    if (preg_match('/^(\w+)\(/', $col, $m)) {
+                    // a column of a computed expression can come back named "1", i.e. an int key
+                    if (preg_match('/^(\w+)\(/', (string)$col, $m)) {
                         $row[$col] = $this->_castFuncResult($m[1], $val);
                     }
                 }
