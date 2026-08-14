@@ -14,6 +14,7 @@
 * [maxMatches()](#maxmatches)
 * [explain()](#explain)
 * [Соединение таблиц](#соединение-таблиц)
+* [Векторный поиск (KNN)](#векторный-поиск-knn)
 * [Условия по датам](#условия-по-датам)
 * [Агрегаты и одиночные значения](#агрегаты-и-одиночные-значения)
 * [Обход большой выборки](#обход-большой-выборки)
@@ -470,6 +471,47 @@ $row = ManticoreDb::table('?products')
 Чего Manticore не умеет — того не умеет и этот метод: алиасов таблиц, подзапросов
 (`joinSub()`) и любого условия соединения, кроме равенства, — другой оператор бросает
 `InvalidArgumentException`, а не улетает на сервер за синтаксической ошибкой.
+
+## Векторный поиск (KNN)
+
+Колонка типа `float_vector` хранит вектор фиксированной размерности, а искать по ней можно
+ближайших соседей:
+
+```php
+use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
+
+ManticoreDb::create('?products', function (SchemaTable $table) {
+    $table->text('title');
+    $table->floatVector('embedding', 384);                       // по умолчанию L2
+    // $table->floatVector('embedding', 384, 'cosine', ['hnsw_m' => 16]);
+});
+
+// векторы записываются и читаются как массивы чисел
+ManticoreDb::table('?products')->insert(['title' => 'красное яблоко', 'embedding' => [0.12, 0.4, ...]]);
+
+// пять ближайших соседей заданного вектора
+$rows = ManticoreDb::table('?products')->whereKnn('embedding', 5, $vector)->get();
+```
+
+Расстояние возвращается в строке как `_knn_dist` — так же, как вес полнотекстового запроса
+приходит в `_score`. К выборке `SELECT *` сервер добавляет его сам.
+
+`whereKnn()` сочетается с остальными частями запроса, и билдер расставляет их в том порядке,
+который принимает сервер: сначала `knn()`, затем `MATCH()`, затем всё прочее:
+
+```php
+$rows = ManticoreDb::table('?products')
+    ->whereKnn('embedding', 10, $vector)
+    ->match('яблоко')
+    ->where('in_stock', true)
+    ->limit(5)
+    ->get();
+// SELECT * FROM ... WHERE knn(embedding, 10, (…)) AND MATCH('яблоко') AND (in_stock=1) LIMIT 5
+```
+
+Manticore принимает одно KNN-условие на запрос, поэтому повторный `whereKnn()` заменяет
+предыдущий. Возможность требует, чтобы сервер загрузил KNN-библиотеку из Manticore Columnar
+Library: без неё таблицу с колонкой `float_vector` не получится даже создать.
 
 ## Условия по датам
 

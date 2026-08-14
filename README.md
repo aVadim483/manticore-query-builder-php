@@ -16,7 +16,7 @@ Features
 * Clear Laravel-like syntax
 * Multiple INSERT and REPLACE
 * Support MATCH() and multi-level WHERE for SELECT
-* Support faceted search and JOIN of two tables
+* Support faceted search, JOIN of two tables and KNN vector search
 * Column types are applied in both directions: PHP values on write, PHP types on read
 * The helpers of the Laravel query builder: aggregates, chunked walks, conditional building,
   conditions on dates, upsert and the rest

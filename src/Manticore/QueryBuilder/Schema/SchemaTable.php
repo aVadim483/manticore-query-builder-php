@@ -222,6 +222,37 @@ class SchemaTable
      *
      * @return SchemaColumn
      */
+    /**
+     * A vector column for KNN search.
+     *
+     *      $table->floatVector('embedding', 384);
+     *      $table->floatVector('embedding', 384, 'cosine', ['hnsw_m' => 16]);
+     *
+     * The number of dimensions is fixed by the schema: a vector of another length is rejected
+     * by the server on write. Similarity is one of L2, IP or COSINE.
+     *
+     * @param string $name
+     * @param int $dims how many dimensions a vector of this column has
+     * @param string|null $similarity
+     * @param array|null $options other knn options, e.g. hnsw_m or hnsw_ef_construction
+     *
+     * @return SchemaColumn
+     */
+    public function floatVector(string $name, int $dims, ?string $similarity = 'l2', ?array $options = []): SchemaColumn
+    {
+        return $this->addColumn($name, 'float_vector', array_merge([
+            'knn_type' => 'hnsw',
+            'knn_dims' => $dims,
+            'hnsw_similarity' => $similarity ?: 'l2',
+        ], $options ?: []));
+    }
+
+    /**
+     * @param string $name
+     * @param string|array $options
+     *
+     * @return SchemaColumn
+     */
     public function multi(string $name, $options = null): SchemaColumn
     {
         return $this->addColumn($name, 'multi', $options);

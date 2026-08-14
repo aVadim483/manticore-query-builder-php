@@ -48,6 +48,10 @@ class Query
     /** @var bool|null whether to select weight(); null decides by the presence of a match() */
     private ?bool $score = null;
 
+    /** @var string|null the knn() condition of the query, see whereKnn() */
+    private ?string $knn = null;
+
+
     /**
      * Computed columns the conditions refer to, alias => expression.
      *
@@ -303,6 +307,11 @@ class Query
                         case 'float':
                             $row[$col] = (float)$val;
                             break;
+                        case 'float_vector':
+                            // the server sends a vector as "1.000000,2.000000"
+                            $val = (string)$val;
+                            $row[$col] = ($val === '') ? [] : array_map('floatval', explode(',', $val));
+                            break;
                         case 'multi':
                         case 'multi64':
                         case 'mva':
@@ -329,6 +338,12 @@ class Query
             }
             foreach ($this->exprColumns as $alias => $expression) {
                 unset($row[$alias]);
+            }
+            if (isset($row['@knn_dist'])) {
+                // the server names the distance of a knn() query "@knn_dist"; the row carries it
+                // as "_knn_dist", next to the "_score" of a full-text one
+                $row['_knn_dist'] = (float)$row['@knn_dist'];
+                unset($row['@knn_dist']);
             }
             $result[$resNum] = $row;
         }
@@ -950,6 +965,36 @@ class Query
     }
 
     /**
+     * Nearest neighbours of the given vector: WHERE knn(<column>, <k>, (…)).
+     *
+     *      table('?products')->whereKnn('embedding', 5, $vector)->get();
+     *
+     * The column has to be a float_vector with a KNN index, see SchemaTable::floatVector(),
+     * and the vector has to have as many dimensions as the schema says.
+     *
+     * Combines with the rest of the query - where(), match(), orderBy(), limit(). The server
+     * adds the distance to a "SELECT *" by itself, and the row carries it as "_knn_dist", next
+     * to the "_score" of a full-text query. Manticore takes one KNN condition per query, so a
+     * second call replaces the first.
+     *
+     * @param string $column
+     * @param int $k how many neighbours to look for
+     * @param array $vector
+     *
+     * @return $this
+     */
+    public function whereKnn(string $column, int $k, array $vector): Query
+    {
+        $values = array_map(static function ($item) {
+            return str_replace(',', '.', (string)(float)$item);
+        }, $vector);
+
+        $this->knn = 'knn(' . $column . ', ' . max(1, $k) . ', (' . implode(',', $values) . '))';
+
+        return $this;
+    }
+
+    /**
      * Alias of match(), for the where*() naming.
      *
      * There is deliberately no orWhereMatch() or whereNotMatch(): MATCH is not a condition of
@@ -1417,21 +1462,26 @@ class Query
             $match = $this->_sqlMatch();
             $where = $this->_sqlWhere();
 
+            // the order is the one the server accepts: knn() first, then MATCH(), then the rest
+            $conditions = [];
+            if ($this->knn !== null) {
+                $conditions[] = $this->knn;
+            }
             if ($match !== null) {
-                $sql .= ' WHERE MATCH(' . $match . ')';
+                $conditions[] = 'MATCH(' . $match . ')';
             }
             if ($where) {
-                if ($match !== null) {
-                    if ($where[0] === '(' && substr($where, -1) === ')' && substr_count($where, '(') === 1) {
-                        $sql .= ' AND ' . $where;
-                    }
-                    else {
-                        $sql .= ' AND (' . $where . ')';
-                    }
+                if ($conditions) {
+                    $conditions[] = ($where[0] === '(' && substr($where, -1) === ')' && substr_count($where, '(') === 1)
+                        ? $where
+                        : '(' . $where . ')';
                 }
                 else {
-                    $sql .= ' WHERE ' . $where;
+                    $conditions[] = $where;
                 }
+            }
+            if ($conditions) {
+                $sql .= ' WHERE ' . implode(' AND ', $conditions);
             }
             if ($group = $this->_sqlGroup()) {
                 $sql .= ' GROUP BY ' . $group;

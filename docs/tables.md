@@ -31,6 +31,7 @@ $res = ManticoreDb::create('demo_test', function (SchemaTable $table) {
     $table->float('price');
     $table->multi('list');
     $table->bool('boo');
+    $table->floatVector('embedding', 384);   // a vector column for KNN search
     
     // set table options
     $table->tableEngine('rowwise');

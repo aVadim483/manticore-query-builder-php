@@ -630,6 +630,10 @@ class Parser
         if ($type === 'json') {
             return self::formatScalar(json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION), 'str');
         }
+        if ($type === 'float_vector') {
+            // the whole list is one value here, not a set of them
+            return self::formatScalar($arr, $type);
+        }
 
         $result = '';
         foreach ($arr as $value) {
@@ -741,6 +745,14 @@ class Parser
             case 'multi':
             case 'multi64':
                 return (string)((int)$value);
+            case 'float_vector':
+                // a vector goes in as a bracketed list of floats: (1.0,2.0,3.0)
+                $values = is_array($value) ? $value : preg_split('/\s*,\s*/', trim((string)$value, " ()"));
+                $values = array_map(static function ($item) {
+                    return str_replace(',', '.', (string)(float)$item);
+                }, $values ?: []);
+
+                return '(' . implode(',', $values) . ')';
             case 'NULL':
                 return 'NULL';
         }

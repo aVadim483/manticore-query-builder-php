@@ -15,6 +15,7 @@ Jump To:
 * [Working with JSON attributes](#working-with-json-attributes)
 * [Searching for what a user typed](#searching-for-what-a-user-typed)
 * [Joining tables](#joining-tables)
+* [Vector search (KNN)](#vector-search-knn)
 * [Conditions on dates](#conditions-on-dates)
 * [Aggregates and single values](#aggregates-and-single-values)
 * [Walking over a large result](#walking-over-a-large-result)
@@ -466,6 +467,47 @@ rather than the string the server sends.
 What Manticore does not do, and neither does this method: table aliases, subqueries
 (`joinSub()`), and any join condition other than equality — a different operator throws an
 `InvalidArgumentException` instead of reaching the server as a syntax error.
+
+## Vector search (KNN)
+
+A `float_vector` column holds a vector of a fixed number of dimensions and is searched by
+nearest neighbours:
+
+```php
+use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
+
+ManticoreDb::create('?products', function (SchemaTable $table) {
+    $table->text('title');
+    $table->floatVector('embedding', 384);                       // L2 by default
+    // $table->floatVector('embedding', 384, 'cosine', ['hnsw_m' => 16]);
+});
+
+// vectors are written and read back as arrays of floats
+ManticoreDb::table('?products')->insert(['title' => 'red apple', 'embedding' => [0.12, 0.4, ...]]);
+
+// the five nearest neighbours of the given vector
+$rows = ManticoreDb::table('?products')->whereKnn('embedding', 5, $vector)->get();
+```
+
+The distance comes back in the row as `_knn_dist`, the way the weight of a full-text query comes
+back as `_score` - the server adds it to a `SELECT *` itself.
+
+`whereKnn()` combines with the rest of the query, and the builder writes the parts in the order
+the server takes them - `knn()` first, then `MATCH()`, then everything else:
+
+```php
+$rows = ManticoreDb::table('?products')
+    ->whereKnn('embedding', 10, $vector)
+    ->match('apple')
+    ->where('in_stock', true)
+    ->limit(5)
+    ->get();
+// SELECT * FROM ... WHERE knn(embedding, 10, (…)) AND MATCH('apple') AND (in_stock=1) LIMIT 5
+```
+
+Manticore takes one KNN condition per query, so a second `whereKnn()` replaces the first. The
+feature needs the KNN library of the Manticore Columnar Library loaded by the server: without it
+a table with a `float_vector` column cannot even be created.
 
 ## Conditions on dates
 

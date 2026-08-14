@@ -288,6 +288,31 @@ final class QueryHelpersSqlTest extends UnitTestCase
         );
     }
 
+    public function testWhereKnnBuildsTheCondition(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE knn(vec, 5, (1,2,3.5))',
+            $this->query()->whereKnn('vec', 5, [1, 2, 3.5])->toSql()
+        );
+    }
+
+    /**
+     * The server takes knn() as the first condition of the WHERE and nowhere else
+     */
+    public function testWhereKnnComesFirst(): void
+    {
+        $sql = $this->query()
+            ->where('price', '>', 10)
+            ->match('galaxy')
+            ->whereKnn('vec', 3, [1.0, 2.0])
+            ->toSql();
+
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE knn(vec, 3, (1,2)) AND MATCH('galaxy') AND (price>10)",
+            $sql
+        );
+    }
+
     public function testHavingRaw(): void
     {
         $this->assertSqlSame(

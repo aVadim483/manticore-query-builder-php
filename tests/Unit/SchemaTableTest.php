@@ -179,4 +179,25 @@ final class SchemaTableTest extends TestCase
     {
         $this->assertSame('()', (string)(new SchemaTable()));
     }
+
+    public function testFloatVectorColumn(): void
+    {
+        $schema = new SchemaTable();
+        $schema->floatVector('embedding', 384);
+
+        $this->assertStringContainsString(
+            "embedding float_vector knn_type='hnsw' knn_dims='384' hnsw_similarity='l2'",
+            (string)$schema
+        );
+    }
+
+    public function testFloatVectorTakesSimilarityAndExtraOptions(): void
+    {
+        $schema = new SchemaTable();
+        $schema->floatVector('embedding', 4, 'cosine', ['hnsw_m' => 16]);
+
+        $definition = (string)$schema;
+        $this->assertStringContainsString("hnsw_similarity='cosine'", $definition);
+        $this->assertStringContainsString("hnsw_m='16'", $definition);
+    }
 }
