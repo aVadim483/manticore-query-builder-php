@@ -470,8 +470,16 @@ What Manticore does not do, and neither does this method: table aliases, subquer
 
 ## Vector search (KNN)
 
-A `float_vector` column holds a vector of a fixed number of dimensions and is searched by
-nearest neighbours:
+KNN stands for *k-nearest neighbours*: instead of asking for the rows where a column equals
+something, the query asks for the `k` rows whose vector is closest to a given one.
+
+A vector here is a list of numbers describing an object - usually the output of an embedding
+model, which turns a text or an image into, say, 384 numbers. Objects close in meaning get
+close numbers, which is what makes this a semantic search: `match('apple')` finds the documents
+containing the word, while a KNN query over embeddings also finds the ones about apples that
+never use it.
+
+A `float_vector` column holds such a vector, of a number of dimensions fixed by the schema:
 
 ```php
 use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
@@ -489,8 +497,17 @@ ManticoreDb::table('?products')->insert(['title' => 'red apple', 'embedding' => 
 $rows = ManticoreDb::table('?products')->whereKnn('embedding', 5, $vector)->get();
 ```
 
+The metric of closeness is chosen when the column is declared:
+
+| Similarity | What it measures | Usually for |
+|---|---|---|
+| `l2` (default) | euclidean distance | vectors of comparable length |
+| `cosine` | the angle between vectors, ignoring their length | text embeddings |
+| `ip` | inner product | models trained for it |
+
 The distance comes back in the row as `_knn_dist`, the way the weight of a full-text query comes
-back as `_score` - the server adds it to a `SELECT *` itself.
+back as `_score` - the server adds it to a `SELECT *` itself. With `l2` a smaller distance means
+a closer match: an exact hit gives nearly zero.
 
 `whereKnn()` combines with the rest of the query, and the builder writes the parts in the order
 the server takes them - `knn()` first, then `MATCH()`, then everything else:
