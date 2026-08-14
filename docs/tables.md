@@ -1,3 +1,5 @@
+**English** | [Русский](ru/tables.md)
+
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
 Jump To:

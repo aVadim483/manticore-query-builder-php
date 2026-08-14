@@ -1,3 +1,5 @@
+**English** | [Русский](README.ru.md)
+
 [![GitHub Release](https://img.shields.io/github/v/release/aVadim483/manticore-query-builder-php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
 [![Packagist Downloads](https://img.shields.io/packagist/dt/avadim/manticore-query-builder-php?color=%23aa00aa)](https://packagist.org/packages/avadim/manticore-query-builder-php)
 [![GitHub License](https://img.shields.io/github/license/aVadim483/manticore-query-builder-php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
@@ -137,7 +139,7 @@ More detailed documentation is available in the [/docs](/docs/README.md) folder:
 [result set](/docs/result_set.md),
 [logging](/docs/logging.md).
 
-Документация на русском языке — в папке [/docs/ru](/docs/ru/README.md).
+Документация на русском языке: [README.ru.md](README.ru.md) и папка [/docs/ru](/docs/ru).
 
 ## Tests
 

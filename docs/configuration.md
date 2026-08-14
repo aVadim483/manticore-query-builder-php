@@ -1,3 +1,5 @@
+**English** | [Русский](ru/configuration.md)
+
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
 ## Configuration

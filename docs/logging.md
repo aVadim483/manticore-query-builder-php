@@ -1,3 +1,5 @@
+**English** | [Русский](ru/logging.md)
+
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
 ## Logging

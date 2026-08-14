@@ -1,3 +1,5 @@
+[English](../searching.md) | **Русский**
+
 # Manticore Search Query Builder for PHP (неофициальный PHP-клиент)
 
 Содержание:

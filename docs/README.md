@@ -1,3 +1,5 @@
+**English** | [Русский](../README.ru.md)
+
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
 ## Documentation
@@ -10,5 +12,5 @@
 * [ResultSet Class](result_set.md)
 * [Logging](logging.md)
 
-Документация на русском языке — в папке [ru](ru/README.md).
+Документация на русском языке — в папке [ru](ru), начиная с [README.ru.md](../README.ru.md).
 

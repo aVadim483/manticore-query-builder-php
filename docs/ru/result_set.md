@@ -1,3 +1,5 @@
+[English](../result_set.md) | **Русский**
+
 # Manticore Search Query Builder for PHP (неофициальный PHP-клиент)
 
 ## ResultSet
