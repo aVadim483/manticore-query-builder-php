@@ -506,8 +506,8 @@ $rows = ManticoreDb::table('?products')
 ```
 
 Manticore takes one KNN condition per query, so a second `whereKnn()` replaces the first. The
-feature needs the KNN library of the Manticore Columnar Library loaded by the server: without it
-a table with a `float_vector` column cannot even be created.
+feature needs the KNN library loaded by the server - without it a table with a `float_vector`
+column cannot even be created; see [what needs more than the bare server](../README.md#what-needs-more-than-the-bare-server).
 
 ## Conditions on dates
 

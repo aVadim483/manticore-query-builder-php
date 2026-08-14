@@ -31,6 +31,33 @@ Manticore Search server documentation: https://manual.manticoresearch.com/
 * Manticore Search reachable over its SQL interface (port 9306 by default).
   The HTTP/JSON API is not used.
 
+### What needs more than the bare server
+
+Most of the builder talks to the server and nothing else. A few methods depend on a library
+loaded by the server, or on Manticore Buddy running next to it:
+
+| Method | Needs | Without it |
+|---|---|---|
+| everything else | the server alone | — |
+| `floatVector()`, `whereKnn()` | KNN library | the table cannot be created: *knn library not loaded* |
+| `columnar()`, `columnEngine('columnar')`, `engine => 'columnar'` | Columnar library | the table cannot be created: *columnar library not loaded* |
+| `rename()` | Manticore Buddy | the server answers with a syntax error |
+
+The KNN and columnar libraries both come from the [Manticore Columnar Library](https://github.com/manticoresoftware/columnar);
+the secondary-index library ships with them and speeds filtering up without changing anything
+in the API.
+
+The libraries have to match the daemon: it checks their ABI version on load and refuses one
+that is too new, saying so only when started with `--console`. Which ones did load is written
+in the version string:
+
+```sql
+SHOW STATUS LIKE 'version';
+-- 28.6.6 … (columnar 13.8.3 …) (secondary 13.8.3 …) (knn 13.8.3 …)
+```
+
+A library that is missing from that line is not loaded, whatever the files on disk say.
+
 ## Installation
 
 ```bash

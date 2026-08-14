@@ -93,7 +93,7 @@ $res = ManticoreDb::table('products')->modifyColumn('group_id', 'bigint');
 // Change the full-text settings of the table (the columns are not touched)
 $res = ManticoreDb::table('products')->alterSettings(['html_strip' => 1, 'morphology' => ['lemmatize_en_all']]);
 
-// Rename the table (needs a server with Manticore Buddy running)
+// Rename the table (needs Manticore Buddy, see the requirements table in the README)
 $res = ManticoreDb::table('?products')->rename('?goods');
 
 // The same operations from the facade, with the table as the first argument
