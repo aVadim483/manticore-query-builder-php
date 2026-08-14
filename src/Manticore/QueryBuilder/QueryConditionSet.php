@@ -10,12 +10,27 @@ class QueryConditionSet
     private array $operands = [];
     private array $params = [];
     private int $level = 0;
+    private bool $negate = false;
 
 
     public function __construct(?string $bool = null, ?int $level = 0)
     {
         $this->level = $level;
         $this->bool = $bool;
+    }
+
+    /**
+     * Wrap the whole group in NOT(), as whereNot() asks for
+     *
+     * @param bool $negate
+     *
+     * @return $this
+     */
+    public function negate(bool $negate = true): self
+    {
+        $this->negate = $negate;
+
+        return $this;
     }
 
 
@@ -120,6 +135,9 @@ class QueryConditionSet
                 }
             }
             $result = str_replace(['( ', ' ('], '(', $result);
+            if ($this->negate) {
+                $result = 'NOT (' . $result . ')';
+            }
             if ($needBool && $this->bool) {
                 $result = $this->bool . ' ' . $result;
             }

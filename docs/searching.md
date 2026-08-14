@@ -11,6 +11,9 @@ Jump To:
 * [groupBy() and having()](#groupby---and-having--)
 * [maxMatches()](#maxmatches--)
 * [Working with JSON attributes](#working-with-json-attributes)
+* [Aggregates and single values](#aggregates-and-single-values)
+* [Walking over a large result](#walking-over-a-large-result)
+* [Conditional building](#conditional-building)
 * [Faceted search](#faceted-search)
 
 ## Retrieving rows from a table
@@ -153,6 +156,26 @@ $res = ManticoreDb::table('?products')->where(['color' => 'red', 'price' => 10])
 // the same with explicit operators
 $res = ManticoreDb::table('?products')->where([['price', '>', 10], ['color', 'red']])->get();
 ```
+The helpers of the Laravel query builder are there as well:
+```php
+// SELECT * FROM ?products WHERE NOT((color='red'))
+$res = ManticoreDb::table('?products')->whereNot('color', 'red')->get();
+// a whole group can be negated the same way
+$res = ManticoreDb::table('?products')->whereNot(function ($condition) {
+    $condition->where('color', 'red')->orWhere('color', 'green');
+})->get();
+
+// at least one of the columns matches
+$res = ManticoreDb::table('?products')->whereAny(['title', 'manufacturer'], 'acme')->get();
+// every one of them
+$res = ManticoreDb::table('?products')->whereAll(['price', 'qty'], '>', 10)->get();
+// none of them
+$res = ManticoreDb::table('?products')->whereNone(['price', 'qty'], '>', 10)->get();
+
+// a condition as it is written
+$res = ManticoreDb::table('?products')->whereRaw('price > 100 AND qty < 10')->get();
+```
+
 Sometimes you may need to group several "WHERE" clauses within parentheses in order to achieve your query's desired logical grouping.
 To accomplish this, you may pass a closure to the ```where()``` method:
 ```php
@@ -236,6 +259,13 @@ An ```offset()``` without a ```limit()``` throws a ```LogicException```: Mantico
 of a huge ```LIMIT``` makes the server ignore the offset - so the page asked for cannot be
 returned, and saying so beats quietly answering with the first one.
 
+```take()``` and ```skip()``` are the aliases of the two, and ```forPage()``` sets the whole
+window at once:
+```php
+// LIMIT 30,15 - the third page, fifteen rows each
+$res = ManticoreDb::table('?products')->forPage(3, 15)->get();
+```
+
 ### orderBy() and orderByDesc()
 ```php
 // ORDER BY price ASC
@@ -253,6 +283,24 @@ $query->orderByDesc(['price', 'id'])->get();
 A direction written into the expression itself is kept as is, so ```orderBy('price DESC')```
 gives ```ORDER BY price DESC``` and not ```price DESC ASC```. Any direction other than
 ```asc``` / ```desc``` throws an ```InvalidArgumentException```.
+
+```php
+// ORDER BY created_at DESC / ASC
+$query->latest()->get();
+$query->oldest()->get();
+// by another column
+$query->latest('published_at')->get();
+
+// ORDER BY RAND()
+$query->inRandomOrder()->get();
+
+// an expression as it is written
+$query->orderByRaw('WEIGHT() DESC, price ASC')->get();
+
+// drop the ordering set so far, optionally putting another one in its place
+$query->reorder()->get();
+$query->reorder('id', 'desc')->get();
+```
 
 ### groupBy() and having()
 ```php
@@ -309,6 +357,73 @@ $res = ManticoreDb::table('?products')->match('brown | fox')->explain('dot');
 ```
 The rows of ```$res->result()``` carry the tree under the ```Variable_name``` / ```Value```
 keys, the same way ```tableStatus()``` and ```tableSettings()``` report their values.
+
+## Aggregates and single values
+
+```php
+$max = ManticoreDb::table('?products')->max('price');
+$min = ManticoreDb::table('?products')->min('price');
+$sum = ManticoreDb::table('?products')->sum('qty');
+$avg = ManticoreDb::table('?products')->avg('price');
+$num = ManticoreDb::table('?products')->count();
+
+// any other aggregate function
+$distinct = ManticoreDb::table('?products')->aggregate('COUNT', 'DISTINCT manufacturer');
+
+// one column of the first matching row
+$name = ManticoreDb::table('?products')->where('id', 12)->value('title');
+
+// whether anything matches
+if (ManticoreDb::table('?products')->where('price', '>', 1000)->exists()) { /* ... */ }
+if (ManticoreDb::table('?products')->where('price', '>', 1000)->doesntExist()) { /* ... */ }
+
+// the only matching row, throws when there is none or more than one
+$row = ManticoreDb::table('?products')->where('sku', 'A-1')->sole();
+```
+
+An aggregate of a result without rows is `null`, not zero.
+
+## Walking over a large result
+
+```php
+// page by page, with LIMIT/OFFSET
+ManticoreDb::table('?products')->chunk(500, function (array $rows, int $page) {
+    // return false to stop the walk
+});
+
+// page by page, by the id column - the deeper pages do not get slower, and max_matches
+// does not bound the walk
+ManticoreDb::table('?products')->chunkById(500, function (array $rows) { /* ... */ });
+
+// row by row
+ManticoreDb::table('?products')->each(function (array $row) { /* ... */ });
+
+// as a generator, fetching a page at a time
+foreach (ManticoreDb::table('?products')->lazy(500) as $row) { /* ... */ }
+foreach (ManticoreDb::table('?products')->cursor() as $row) { /* ... */ }
+```
+
+## Conditional building
+
+```php
+$query = ManticoreDb::table('?products')
+    ->when($request->get('brand'), function ($query, $brand) {
+        $query->where('manufacturer', $brand);
+    })
+    ->unless($showAll, function ($query) {
+        $query->where('on_sale', true);
+    });
+
+// hand the query over and go on building it
+$query->tap(function ($query) { /* ... */ });
+
+// branch off a common part - the copy does not share the conditions
+$cheap = $query->clone()->where('price', '<', 100);
+
+// print the SQL, or print it and stop
+$query->dump();
+$query->dd();
+```
 
 ## Working with JSON attributes
 

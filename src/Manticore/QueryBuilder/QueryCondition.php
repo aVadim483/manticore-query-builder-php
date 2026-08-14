@@ -55,6 +55,10 @@ class QueryCondition
         if (is_callable($field)) {
             $condition = new QueryConditionSet($bool, $level);
             $field($condition);
+            // where($closure, 'NOT') is how whereNot() asks for the whole group to be negated
+            if ($argsCount >= 2 && is_string($arg1) && strtoupper(trim($arg1)) === 'NOT') {
+                $condition->negate();
+            }
 
             return $condition;
         }

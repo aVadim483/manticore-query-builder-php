@@ -202,4 +202,110 @@ trait WhereConditionsTrait
     {
         return $this->orWhere($field, 'NOT BETWEEN', $arg);
     }
+
+    /**
+     * A condition as it is written: whereRaw('price > 100 AND qty < 10')
+     *
+     * @param string $expression
+     *
+     * @return $this
+     */
+    public function whereRaw(string $expression): self
+    {
+        return $this->andWhere($expression);
+    }
+
+    /**
+     * @param string $expression
+     *
+     * @return $this
+     */
+    public function orWhereRaw(string $expression): self
+    {
+        return $this->orWhere($expression);
+    }
+
+    /**
+     * Negate a condition, a whole group of them included
+     *
+     *      whereNot('qty', 1)
+     *      whereNot(function ($condition) { $condition->where('qty', 1)->orWhere('qty', 2); })
+     *
+     * @param mixed $field
+     * @param mixed|null $arg1
+     * @param mixed|null $arg2
+     *
+     * @return $this
+     */
+    public function whereNot($field, $arg1 = null, $arg2 = null): self
+    {
+        $args = func_get_args();
+
+        return $this->andWhere(static function ($condition) use ($args) {
+            $condition->where(...$args);
+        }, 'NOT');
+    }
+
+    /**
+     * The rows where at least one of the columns matches
+     *
+     *      whereAny(['title', 'brand'], 'acme')
+     *      whereAny(['price', 'qty'], '>', 10)
+     *
+     * @param array $columns
+     * @param mixed|null $arg1
+     * @param mixed|null $arg2
+     *
+     * @return $this
+     */
+    public function whereAny(array $columns, $arg1 = null, $arg2 = null): self
+    {
+        $args = array_slice(func_get_args(), 1);
+
+        return $this->andWhere(static function ($condition) use ($columns, $args) {
+            foreach ($columns as $column) {
+                $condition->orWhere($column, ...$args);
+            }
+        });
+    }
+
+    /**
+     * The rows where every one of the columns matches
+     *
+     * @param array $columns
+     * @param mixed|null $arg1
+     * @param mixed|null $arg2
+     *
+     * @return $this
+     */
+    public function whereAll(array $columns, $arg1 = null, $arg2 = null): self
+    {
+        $args = array_slice(func_get_args(), 1);
+
+        return $this->andWhere(static function ($condition) use ($columns, $args) {
+            foreach ($columns as $column) {
+                $condition->where($column, ...$args);
+            }
+        });
+    }
+
+    /**
+     * The rows where none of the columns matches
+     *
+     * @param array $columns
+     * @param mixed|null $arg1
+     * @param mixed|null $arg2
+     *
+     * @return $this
+     */
+    public function whereNone(array $columns, $arg1 = null, $arg2 = null): self
+    {
+        $args = array_slice(func_get_args(), 1);
+
+        return $this->whereNot(static function ($condition) use ($columns, $args) {
+            foreach ($columns as $column) {
+                $condition->orWhere($column, ...$args);
+            }
+        });
+    }
 }

@@ -1147,6 +1147,38 @@ class Query
     }
 
     /**
+     * Add columns to the ones selected so far
+     *
+     * @param string|array $columns
+     * @param string|array ...$more
+     *
+     * @return $this
+     */
+    public function addSelect($columns = '*', ...$more): Query
+    {
+        $current = $this->select;
+        $this->select($columns, ...$more);
+        $this->select = array_values(array_unique(array_merge($current, $this->select)));
+
+        return $this;
+    }
+
+    /**
+     * Select an expression, as it is written
+     *
+     * @param string $expression
+     *
+     * @return $this
+     */
+    public function selectRaw(string $expression): Query
+    {
+        $this->command = 'SELECT';
+        $this->select[] = $expression;
+
+        return $this;
+    }
+
+    /**
      * Make schema for a new index
      *
      * @param array|callable $schema
@@ -1265,6 +1297,18 @@ class Query
      *
      * @return $this
      */
+    /**
+     * A HAVING expression as it is written
+     *
+     * @param string $expression
+     *
+     * @return $this
+     */
+    public function havingRaw(string $expression): Query
+    {
+        return $this->having($expression);
+    }
+
     public function having(string $column, $operator = null, $value = null): Query
     {
         if ($this->having) {
@@ -1365,6 +1409,113 @@ class Query
     public function offset(int $param): Query
     {
         $this->limit[1] = $param;
+
+        return $this;
+    }
+
+    /**
+     * Alias of limit()
+     *
+     * @param int $value
+     *
+     * @return $this
+     */
+    public function take(int $value): Query
+    {
+        return $this->limit($value);
+    }
+
+    /**
+     * Alias of offset()
+     *
+     * @param int $value
+     *
+     * @return $this
+     */
+    public function skip(int $value): Query
+    {
+        return $this->offset($value);
+    }
+
+    /**
+     * The given page of the result, counting from one
+     *
+     * @param int $page
+     * @param int|null $perPage
+     *
+     * @return $this
+     */
+    public function forPage(int $page, ?int $perPage = 15): Query
+    {
+        $perPage = max(1, (int)$perPage);
+        $offset = max(0, ($page - 1) * $perPage);
+        // the window is set as a whole: a page replaces whatever limit was set before it
+        $this->limit = [$perPage, $offset ?: null];
+
+        return $this;
+    }
+
+    /**
+     * Order by the given column, newest first
+     *
+     * @param string|null $column
+     *
+     * @return $this
+     */
+    public function latest(?string $column = 'created_at'): Query
+    {
+        return $this->orderBy($column ?: 'created_at', 'DESC');
+    }
+
+    /**
+     * Order by the given column, oldest first
+     *
+     * @param string|null $column
+     *
+     * @return $this
+     */
+    public function oldest(?string $column = 'created_at'): Query
+    {
+        return $this->orderBy($column ?: 'created_at', 'ASC');
+    }
+
+    /**
+     * ORDER BY RAND()
+     *
+     * @return $this
+     */
+    public function inRandomOrder(): Query
+    {
+        $this->order[] = 'RAND()';
+
+        return $this;
+    }
+
+    /**
+     * Drop the ordering set so far, optionally putting another one in its place
+     *
+     * @param string|array|null $names
+     * @param string|null $direction
+     *
+     * @return $this
+     */
+    public function reorder($names = null, ?string $direction = null): Query
+    {
+        $this->order = [];
+
+        return $names === null ? $this : $this->orderBy($names, $direction);
+    }
+
+    /**
+     * ORDER BY an expression, as it is written
+     *
+     * @param string $expression
+     *
+     * @return $this
+     */
+    public function orderByRaw(string $expression): Query
+    {
+        $this->order[] = $expression;
 
         return $this;
     }
@@ -2171,13 +2322,114 @@ class Query
      */
     public function count(): int
     {
-        $this->selectColumns('COUNT(*) as _count');
+        return (int)$this->aggregate('COUNT', '*');
+    }
+
+    /**
+     * An aggregate function over the query, e.g. aggregate('MAX', 'price')
+     *
+     * @param string $function
+     * @param string|null $column
+     *
+     * @return mixed|null null when nothing matched
+     */
+    public function aggregate(string $function, ?string $column = '*')
+    {
+        $function = strtoupper($function);
+        // deliberately not get(): a subclass is free to answer that one with anything
+        $this->selectColumns($function . '(' . ($column ?: '*') . ') as _aggregate');
         $result = $this->exec()->result();
-        if ($result && ($arr = reset($result))) {
-            return $arr['_count'] ?? 0;
+
+        if ($result && ($row = reset($result))) {
+            return $row['_aggregate'] ?? null;
         }
 
-        return 0;
+        return null;
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return mixed|null
+     */
+    public function max(string $column)
+    {
+        return $this->aggregate('MAX', $column);
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return mixed|null
+     */
+    public function min(string $column)
+    {
+        return $this->aggregate('MIN', $column);
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return mixed|null
+     */
+    public function sum(string $column)
+    {
+        return $this->aggregate('SUM', $column);
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return mixed|null
+     */
+    public function avg(string $column)
+    {
+        return $this->aggregate('AVG', $column);
+    }
+
+    /**
+     * Alias of avg()
+     *
+     * @param string $column
+     *
+     * @return mixed|null
+     */
+    public function average(string $column)
+    {
+        return $this->avg($column);
+    }
+
+    /**
+     * The value of one column of the first matching row, or null when nothing matched
+     *
+     * @param string $column
+     *
+     * @return mixed|null
+     */
+    public function value(string $column)
+    {
+        $this->selectColumns($column);
+        $row = $this->limit(1)->exec()->first();
+
+        return is_array($row) ? ($row[$column] ?? null) : null;
+    }
+
+    /**
+     * Whether anything matches the query
+     *
+     * @return bool
+     */
+    public function exists(): bool
+    {
+        return $this->count() > 0;
+    }
+
+    /**
+     * @return bool
+     */
+    public function doesntExist(): bool
+    {
+        return !$this->exists();
     }
 
     /**
@@ -2196,6 +2448,262 @@ class Query
     public function find(int $id)
     {
         return $this->where('id', $id)->first();
+    }
+
+    /**
+     * The conditions are an object, so a plain clone would share them with the original -
+     * chunkById(), which narrows the condition of every next page, would then narrow the
+     * query it was called on as well
+     *
+     * @return void
+     */
+    public function __clone()
+    {
+        $this->conditions = clone $this->conditions;
+        if (isset($this->schema)) {
+            $this->schema = clone $this->schema;
+        }
+    }
+
+    /**
+     * Run the callback over the result page by page.
+     *
+     * The pages are taken with LIMIT/OFFSET, so the deeper ones cost the server more, and the
+     * whole walk is bounded by max_matches - chunkById() has neither limitation.
+     *
+     * @param int $count rows per page
+     * @param callable $callback receives the rows and the page number; returning false stops the walk
+     *
+     * @return bool false when the walk was stopped by the callback
+     */
+    public function chunk(int $count, callable $callback): bool
+    {
+        $count = max(1, $count);
+        $page = 1;
+
+        do {
+            $rows = $this->clone()->forPage($page, $count)->exec()->result();
+            $rows = is_array($rows) ? $rows : [];
+            if (!$rows) {
+                break;
+            }
+            if ($callback($rows, $page) === false) {
+                return false;
+            }
+            $page++;
+        }
+        while (count($rows) === $count);
+
+        return true;
+    }
+
+    /**
+     * Run the callback over the result page by page, walking by the id column.
+     *
+     * Every page asks for the rows after the last id of the previous one, which keeps the
+     * server from sorting through everything that was already seen.
+     *
+     * @param int $count rows per page
+     * @param callable $callback receives the rows and the page number; returning false stops the walk
+     * @param string|null $column the column to walk by, the document id by default
+     *
+     * @return bool false when the walk was stopped by the callback
+     */
+    public function chunkById(int $count, callable $callback, ?string $column = 'id'): bool
+    {
+        $count = max(1, $count);
+        $column = $column ?: 'id';
+        $page = 1;
+        $lastId = null;
+
+        while (true) {
+            $query = $this->clone()->reorder($column, 'ASC')->limit($count)->offset(0);
+            if ($lastId !== null) {
+                $query->where($column, '>', $lastId);
+            }
+            $rows = $query->exec()->result();
+            $rows = is_array($rows) ? $rows : [];
+            if (!$rows) {
+                return true;
+            }
+            if ($callback($rows, $page) === false) {
+                return false;
+            }
+            $last = end($rows);
+            if (!is_array($last) || !isset($last[$column])) {
+                throw new \RuntimeException('The column "' . $column . '" is not among the selected ones, chunkById() cannot walk by it');
+            }
+            $lastId = $last[$column];
+            $page++;
+            if (count($rows) < $count) {
+                return true;
+            }
+        }
+    }
+
+    /**
+     * Run the callback over every row of the result
+     *
+     * @param callable $callback receives the row and its number; returning false stops the walk
+     * @param int|null $count rows per page
+     *
+     * @return bool false when the walk was stopped by the callback
+     */
+    public function each(callable $callback, ?int $count = 1000): bool
+    {
+        $number = 0;
+
+        return $this->chunk((int)$count, static function (array $rows) use ($callback, &$number) {
+            foreach ($rows as $row) {
+                if ($callback($row, $number++) === false) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }
+
+    /**
+     * The rows of the result, one by one, fetched page by page as they are asked for
+     *
+     * @param int|null $count rows per page
+     *
+     * @return \Generator
+     */
+    public function lazy(?int $count = 1000): \Generator
+    {
+        $count = max(1, (int)$count);
+        $page = 1;
+
+        do {
+            $rows = $this->clone()->forPage($page, $count)->exec()->result();
+            $rows = is_array($rows) ? $rows : [];
+            foreach ($rows as $key => $row) {
+                yield $key => $row;
+            }
+            $page++;
+        }
+        while (count($rows) === $count);
+    }
+
+    /**
+     * Alias of lazy()
+     *
+     * @param int|null $count
+     *
+     * @return \Generator
+     */
+    public function cursor(?int $count = 1000): \Generator
+    {
+        return $this->lazy($count);
+    }
+
+    /**
+     * The only row matching the query.
+     *
+     * @return mixed
+     * @throws \RuntimeException when nothing matched, or more than one row did
+     */
+    public function sole()
+    {
+        $rows = $this->limit(2)->exec()->result();
+        $count = is_array($rows) ? count($rows) : 0;
+
+        if ($count === 0) {
+            throw new \RuntimeException('No records found for the query');
+        }
+        if ($count > 1) {
+            throw new \RuntimeException('More than one record found for the query');
+        }
+
+        return reset($rows);
+    }
+
+    /**
+     * Apply the callback when the value is truthy, the other one when it is not.
+     *
+     * The callback gets the query and the value; what it returns is ignored unless it is a
+     * query, which makes both styles work - modifying and returning.
+     *
+     * @param mixed $value
+     * @param callable $callback
+     * @param callable|null $default
+     *
+     * @return $this
+     */
+    public function when($value, callable $callback, ?callable $default = null): Query
+    {
+        if ($value) {
+            $result = $callback($this, $value);
+        }
+        elseif ($default !== null) {
+            $result = $default($this, $value);
+        }
+
+        return isset($result) && $result instanceof self ? $result : $this;
+    }
+
+    /**
+     * Apply the callback when the value is falsy
+     *
+     * @param mixed $value
+     * @param callable $callback
+     * @param callable|null $default
+     *
+     * @return $this
+     */
+    public function unless($value, callable $callback, ?callable $default = null): Query
+    {
+        return $this->when(!$value, $callback, $default);
+    }
+
+    /**
+     * Hand the query over to the callback and go on building it
+     *
+     * @param callable $callback
+     *
+     * @return $this
+     */
+    public function tap(callable $callback): Query
+    {
+        $callback($this);
+
+        return $this;
+    }
+
+    /**
+     * A copy of the query, to branch off a common part
+     *
+     * @return static
+     */
+    public function clone(): Query
+    {
+        return clone $this;
+    }
+
+    /**
+     * Print the SQL of the query
+     *
+     * @return $this
+     */
+    public function dump(): Query
+    {
+        echo $this->toRawSql(), PHP_EOL;
+
+        return $this;
+    }
+
+    /**
+     * Print the SQL of the query and stop
+     *
+     * @return void
+     */
+    public function dd(): void
+    {
+        $this->dump();
+
+        exit(1);
     }
 
     /**
@@ -2338,6 +2846,120 @@ class Query
     public function update(array $data, ?int $id = 0): int
     {
         return (int)$this->updateResultSet($data, $id)->result();
+    }
+
+    /**
+     * Update the rows matching the attributes, or insert a row made of them.
+     *
+     * @param array $attributes conditions to look the row up by, and the columns of a new row
+     * @param array|null $values columns to write
+     *
+     * @return bool
+     */
+    public function updateOrInsert(array $attributes, ?array $values = []): bool
+    {
+        $values = $values ?: [];
+        $lookup = $this->clone()->where($attributes);
+
+        if ($lookup->exists()) {
+            return $this->clone()->where($attributes)->update($values) >= 0;
+        }
+
+        return $this->clone()->insert(array_merge($attributes, $values));
+    }
+
+    /**
+     * Write the given rows, updating the ones already there.
+     *
+     * Manticore knows no unique key other than the document id, so every row is looked up by
+     * the given columns first - i.e. this costs one SELECT per row. An existing row is written
+     * with REPLACE rather than UPDATE, because UPDATE reaches attributes only, not the
+     * full-text fields; the row is read and merged first, so the columns left out keep their
+     * values.
+     *
+     * @param array $rows a row, or a list of them
+     * @param string|array $uniqueBy the columns a row is recognised by
+     * @param array|null $update the columns to write on an existing row, all of them by default
+     *
+     * @return int rows written
+     */
+    public function upsert(array $rows, $uniqueBy, ?array $update = null): int
+    {
+        if (!$rows) {
+            return 0;
+        }
+        if (!self::isMultiRow($rows)) {
+            $rows = [$rows];
+        }
+        $uniqueBy = (array)$uniqueBy;
+        $affected = 0;
+
+        foreach ($rows as $row) {
+            $conditions = [];
+            foreach ($uniqueBy as $column) {
+                if (!array_key_exists($column, $row)) {
+                    throw new \InvalidArgumentException('The column "' . $column . '" of upsert() is missing in a row');
+                }
+                $conditions[$column] = $row[$column];
+            }
+
+            $existing = $this->clone()->where($conditions)->exec()->first();
+            if (is_array($existing) && isset($existing['id'])) {
+                $values = $update === null ? $row : array_intersect_key($row, array_flip($update));
+                $merged = array_merge($existing, $values);
+                unset($merged['id'], $merged['_score']);
+                if ($this->clone()->replace($merged, (int)$existing['id'])) {
+                    $affected++;
+                }
+            }
+            elseif ($this->clone()->insert($row)) {
+                $affected++;
+            }
+        }
+
+        return $affected;
+    }
+
+    /**
+     * Add the given amount to a column of every matching row.
+     *
+     * Manticore takes no expressions in UPDATE, so the rows are read first and written back one
+     * by one - this is not an atomic operation.
+     *
+     * @param string $column
+     * @param int|float $amount
+     * @param array|null $extra other columns to write along the way
+     *
+     * @return int rows updated
+     */
+    public function increment(string $column, $amount = 1, ?array $extra = []): int
+    {
+        $rows = $this->clone()->select(['id', $column])->exec()->result();
+        $affected = 0;
+
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            if (!isset($row['id'])) {
+                continue;
+            }
+            $values = array_merge($extra ?: [], [$column => ($row[$column] ?? 0) + $amount]);
+            $affected += $this->clone()->reorder()->where('id', (int)$row['id'])->update($values);
+        }
+
+        return $affected;
+    }
+
+    /**
+     * Subtract the given amount from a column of every matching row
+     *
+     * @param string $column
+     * @param int|float $amount
+     * @param array|null $extra
+     *
+     * @return int rows updated
+     */
+    public function decrement(string $column, $amount = 1, ?array $extra = []): int
+    {
+        return $this->increment($column, -$amount, $extra);
     }
 
     /**

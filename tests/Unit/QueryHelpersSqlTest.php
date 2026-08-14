@@ -1,0 +1,207 @@
+<?php
+
+namespace avadim\Manticore\Tests\Unit;
+
+use avadim\Manticore\Tests\Support\UnitTestCase;
+
+/**
+ * The SQL of the helpers borrowed from the Laravel query builder: the ones that only shape the
+ * statement. What they answer with is covered by the integration test of the same name.
+ */
+final class QueryHelpersSqlTest extends UnitTestCase
+{
+    public function testTakeAndSkipAreLimitAndOffset(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products LIMIT 10',
+            $this->query()->take(10)->toSql()
+        );
+        $this->assertSqlSame(
+            'SELECT * FROM products LIMIT 20,10',
+            $this->query()->skip(20)->take(10)->toSql()
+        );
+    }
+
+    public function testForPageCountsFromOne(): void
+    {
+        $this->assertSqlSame('SELECT * FROM products LIMIT 15', $this->query()->forPage(1, 15)->toSql());
+        $this->assertSqlSame('SELECT * FROM products LIMIT 15,15', $this->query()->forPage(2, 15)->toSql());
+        $this->assertSqlSame('SELECT * FROM products LIMIT 40,20', $this->query()->forPage(3, 20)->toSql());
+    }
+
+    public function testLatestAndOldest(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products ORDER BY created_at DESC',
+            $this->query()->latest()->toSql()
+        );
+        $this->assertSqlSame(
+            'SELECT * FROM products ORDER BY price ASC',
+            $this->query()->oldest('price')->toSql()
+        );
+    }
+
+    public function testInRandomOrder(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products ORDER BY RAND()',
+            $this->query()->inRandomOrder()->toSql()
+        );
+    }
+
+    public function testReorderDropsTheOrderingSetSoFar(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products',
+            $this->query()->orderBy('price')->reorder()->toSql()
+        );
+        $this->assertSqlSame(
+            'SELECT * FROM products ORDER BY id DESC',
+            $this->query()->orderBy('price')->reorder('id', 'desc')->toSql()
+        );
+    }
+
+    public function testOrderByRawTakesTheExpressionAsItIs(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products ORDER BY WEIGHT() DESC, price ASC',
+            $this->query()->orderByRaw('WEIGHT() DESC, price ASC')->toSql()
+        );
+    }
+
+    public function testAddSelectAppendsColumns(): void
+    {
+        $this->assertSqlSame(
+            'SELECT id, title, price FROM products',
+            $this->query()->select('id', 'title')->addSelect('price')->toSql()
+        );
+    }
+
+    public function testSelectRawTakesTheExpressionAsItIs(): void
+    {
+        $this->assertSqlSame(
+            'SELECT price * 2 as double_price FROM products',
+            $this->query()->selectRaw('price * 2 as double_price')->toSql()
+        );
+    }
+
+    public function testWhereRaw(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE (price > 100 AND qty < 10)',
+            $this->query()->whereRaw('price > 100 AND qty < 10')->toSql()
+        );
+    }
+
+    public function testWhereNotNegatesASingleCondition(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE NOT((qty=1))',
+            $this->query()->whereNot('qty', 1)->toSql()
+        );
+    }
+
+    public function testWhereNotNegatesAWholeGroup(): void
+    {
+        $sql = $this->query()
+            ->whereNot(static function ($condition) {
+                $condition->where('qty', 1)->orWhere('qty', 2);
+            })
+            ->toSql();
+
+        $this->assertSqlSame('SELECT * FROM products WHERE NOT(((qty=1)OR(qty=2)))', $sql);
+    }
+
+    public function testWhereAnyMatchesOneOfTheColumns(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE ((title='acme')OR(manufacturer='acme'))",
+            $this->query()->whereAny(['title', 'manufacturer'], 'acme')->toSql()
+        );
+    }
+
+    public function testWhereAllMatchesEveryColumn(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE ((price>10)AND(qty>10))',
+            $this->query()->whereAll(['price', 'qty'], '>', 10)->toSql()
+        );
+    }
+
+    public function testWhereNoneMatchesNoneOfTheColumns(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE NOT(((price>10)OR(qty>10)))',
+            $this->query()->whereNone(['price', 'qty'], '>', 10)->toSql()
+        );
+    }
+
+    public function testHavingRaw(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products GROUP BY manufacturer HAVING COUNT(*) > 1',
+            $this->query()->groupBy('manufacturer')->havingRaw('COUNT(*) > 1')->toSql()
+        );
+    }
+
+    public function testWhenAppliesTheCallbackOnlyForATruthyValue(): void
+    {
+        $applied = $this->query()->when(true, static function ($query) {
+            $query->where('qty', 1);
+        });
+        $skipped = $this->query()->when(false, static function ($query) {
+            $query->where('qty', 1);
+        });
+
+        $this->assertSqlSame('SELECT * FROM products WHERE (qty=1)', $applied->toSql());
+        $this->assertSqlSame('SELECT * FROM products', $skipped->toSql());
+    }
+
+    public function testWhenFallsBackToTheDefaultCallback(): void
+    {
+        $query = $this->query()->when(
+            false,
+            static function ($query) {
+                $query->where('qty', 1);
+            },
+            static function ($query) {
+                $query->where('qty', 2);
+            }
+        );
+
+        $this->assertSqlSame('SELECT * FROM products WHERE (qty=2)', $query->toSql());
+    }
+
+    public function testUnlessIsTheOtherWayRound(): void
+    {
+        $query = $this->query()->unless(false, static function ($query) {
+            $query->where('qty', 1);
+        });
+
+        $this->assertSqlSame('SELECT * FROM products WHERE (qty=1)', $query->toSql());
+    }
+
+    public function testTapHandsTheQueryOverAndGoesOn(): void
+    {
+        $seen = null;
+        $query = $this->query()->tap(static function ($query) use (&$seen) {
+            $seen = $query;
+        })->where('qty', 1);
+
+        $this->assertNotNull($seen);
+        $this->assertSqlSame('SELECT * FROM products WHERE (qty=1)', $query->toSql());
+    }
+
+    /**
+     * The conditions must not be shared with the copy, or a branch would narrow the query
+     * it branched off
+     */
+    public function testCloneDoesNotShareTheConditions(): void
+    {
+        $base = $this->query()->where('price', '>', 10);
+        $branch = $base->clone()->where('qty', 1);
+
+        $this->assertSqlSame('SELECT * FROM products WHERE (price>10)', $base->toSql());
+        $this->assertSqlSame('SELECT * FROM products WHERE (price>10)AND(qty=1)', $branch->toSql());
+    }
+}

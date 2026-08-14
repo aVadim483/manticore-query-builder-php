@@ -1,0 +1,315 @@
+<?php
+
+namespace avadim\Manticore\Tests\Integration;
+
+use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+use avadim\Manticore\Tests\Support\IntegrationTestCase;
+
+/**
+ * The helpers borrowed from the Laravel query builder, against a live server: aggregates,
+ * single values, the walks over a result and the writes built on top of them.
+ */
+final class QueryHelpersTest extends IntegrationTestCase
+{
+    /** @var string */
+    private string $table;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->table = $this->createTable([
+            'title' => 'text',
+            'manufacturer' => 'string',
+            'price' => 'float',
+            'qty' => 'integer',
+        ], 'helpers');
+    }
+
+    /**
+     * @param int $count
+     *
+     * @return void
+     */
+    private function fill(int $count = 3): void
+    {
+        $rows = [];
+        for ($i = 1; $i <= $count; $i++) {
+            $rows[] = [
+                'id' => $i,
+                'title' => 'row number ' . $i,
+                'manufacturer' => $i % 2 ? 'acme' : 'other',
+                'price' => $i * 10.0,
+                'qty' => $i,
+            ];
+        }
+        ManticoreDb::table($this->table)->insert($rows);
+    }
+
+    public function testAggregates(): void
+    {
+        $this->fill();
+
+        $query = ManticoreDb::table($this->table);
+        $this->assertSame(30.0, $query->clone()->max('price'));
+        $this->assertSame(10.0, $query->clone()->min('price'));
+        $this->assertSame(6, $query->clone()->sum('qty'));
+        $this->assertSame(20.0, $query->clone()->avg('price'));
+        $this->assertSame(20.0, $query->clone()->average('price'));
+        $this->assertSame(3, $query->clone()->count());
+    }
+
+    public function testAggregatesRespectTheConditions(): void
+    {
+        $this->fill();
+
+        // prices are 10, 20, 30 - the condition leaves 20 and 30
+        $this->assertSame(20.0, ManticoreDb::table($this->table)->where('price', '>', 15)->min('price'));
+        $this->assertSame(50.0, ManticoreDb::table($this->table)->where('price', '>', 15)->sum('price'));
+    }
+
+    public function testAggregateOfAnEmptyResultIsNull(): void
+    {
+        $this->assertNull(ManticoreDb::table($this->table)->max('price'));
+    }
+
+    public function testValueReturnsOneColumnOfTheFirstRow(): void
+    {
+        $this->fill();
+
+        $this->assertSame('other', ManticoreDb::table($this->table)->where('qty', 2)->value('manufacturer'));
+        $this->assertNull(ManticoreDb::table($this->table)->where('qty', 99)->value('manufacturer'));
+    }
+
+    public function testExistsAndDoesntExist(): void
+    {
+        $this->fill();
+
+        $this->assertTrue(ManticoreDb::table($this->table)->where('qty', 2)->exists());
+        $this->assertFalse(ManticoreDb::table($this->table)->where('qty', 99)->exists());
+        $this->assertTrue(ManticoreDb::table($this->table)->where('qty', 99)->doesntExist());
+    }
+
+    public function testSoleReturnsTheOnlyMatchingRow(): void
+    {
+        $this->fill();
+
+        $row = ManticoreDb::table($this->table)->where('qty', 2)->sole();
+
+        $this->assertSame('row number 2', $row['title']);
+    }
+
+    public function testSoleThrowsWhenNothingMatched(): void
+    {
+        $this->fill();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('No records found');
+
+        ManticoreDb::table($this->table)->where('qty', 99)->sole();
+    }
+
+    public function testSoleThrowsWhenSeveralRowsMatched(): void
+    {
+        $this->fill();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('More than one record');
+
+        ManticoreDb::table($this->table)->where('price', '>', 5)->sole();
+    }
+
+    public function testChunkWalksThePagesOfTheResult(): void
+    {
+        $this->fill(7);
+        $pages = [];
+
+        $finished = ManticoreDb::table($this->table)->orderBy('id')->chunk(3, static function (array $rows, int $page) use (&$pages) {
+            $pages[$page] = count($rows);
+        });
+
+        $this->assertTrue($finished);
+        $this->assertSame([1 => 3, 2 => 3, 3 => 1], $pages);
+    }
+
+    public function testChunkStopsWhenTheCallbackReturnsFalse(): void
+    {
+        $this->fill(7);
+        $pages = 0;
+
+        $finished = ManticoreDb::table($this->table)->chunk(3, static function () use (&$pages) {
+            $pages++;
+
+            return false;
+        });
+
+        $this->assertFalse($finished);
+        $this->assertSame(1, $pages);
+    }
+
+    public function testChunkByIdWalksByTheIdColumn(): void
+    {
+        $this->fill(7);
+        $seen = [];
+
+        ManticoreDb::table($this->table)->chunkById(3, static function (array $rows) use (&$seen) {
+            foreach ($rows as $row) {
+                $seen[] = $row['id'];
+            }
+        });
+
+        $this->assertSame([1, 2, 3, 4, 5, 6, 7], $seen);
+    }
+
+    /**
+     * The condition of every next page must not pile up on the query it was called on
+     */
+    public function testChunkByIdLeavesTheQueryAlone(): void
+    {
+        $this->fill(5);
+        $query = ManticoreDb::table($this->table)->where('price', '>', 5);
+
+        $query->chunkById(2, static function () {
+        });
+
+        $this->assertSame(5, $query->count());
+    }
+
+    public function testEachWalksTheRows(): void
+    {
+        $this->fill(5);
+        $titles = [];
+
+        $finished = ManticoreDb::table($this->table)->orderBy('id')->each(static function (array $row) use (&$titles) {
+            $titles[] = $row['title'];
+        }, 2);
+
+        $this->assertTrue($finished);
+        $this->assertCount(5, $titles);
+        $this->assertSame('row number 1', $titles[0]);
+    }
+
+    public function testEachStopsWhenTheCallbackReturnsFalse(): void
+    {
+        $this->fill(5);
+        $seen = 0;
+
+        $finished = ManticoreDb::table($this->table)->each(static function () use (&$seen) {
+            $seen++;
+
+            return false;
+        }, 2);
+
+        $this->assertFalse($finished);
+        $this->assertSame(1, $seen);
+    }
+
+    public function testLazyAndCursorYieldEveryRow(): void
+    {
+        $this->fill(7);
+
+        $this->assertSame(7, iterator_count(ManticoreDb::table($this->table)->lazy(2)));
+        $this->assertSame(7, iterator_count(ManticoreDb::table($this->table)->cursor(3)));
+    }
+
+    public function testIncrementAndDecrement(): void
+    {
+        $this->fill();
+
+        $affected = ManticoreDb::table($this->table)->where('qty', '<', 3)->increment('qty', 10);
+
+        $this->assertSame(2, $affected);
+        $this->assertSame([11, 12, 3], array_values(ManticoreDb::table($this->table)->orderBy('id')->pluck('qty')));
+
+        ManticoreDb::table($this->table)->where('id', 3)->decrement('qty');
+
+        $this->assertSame(2, ManticoreDb::table($this->table)->find(3)['qty']);
+    }
+
+    public function testIncrementWritesTheExtraColumnsToo(): void
+    {
+        $this->fill(1);
+
+        ManticoreDb::table($this->table)->where('id', 1)->increment('qty', 5, ['price' => 99.0]);
+
+        $row = ManticoreDb::table($this->table)->find(1);
+        $this->assertSame(6, $row['qty']);
+        $this->assertSame(99.0, $row['price']);
+    }
+
+    public function testUpdateOrInsertUpdatesAnExistingRow(): void
+    {
+        $this->fill();
+
+        $this->assertTrue(ManticoreDb::table($this->table)->updateOrInsert(['manufacturer' => 'other'], ['qty' => 42]));
+        $this->assertSame(42, ManticoreDb::table($this->table)->find(2)['qty']);
+        $this->assertSame(3, ManticoreDb::table($this->table)->count());
+    }
+
+    public function testUpdateOrInsertInsertsWhenNothingMatched(): void
+    {
+        $this->fill();
+
+        $this->assertTrue(ManticoreDb::table($this->table)->updateOrInsert(['manufacturer' => 'third'], ['qty' => 7]));
+
+        $this->assertSame(4, ManticoreDb::table($this->table)->count());
+        $this->assertSame(7, ManticoreDb::table($this->table)->where('manufacturer', 'third')->value('qty'));
+    }
+
+    public function testUpsertWritesBothNewAndExistingRows(): void
+    {
+        $this->fill(2);
+
+        $affected = ManticoreDb::table($this->table)->upsert([
+            ['id' => 1, 'title' => 'rewritten', 'qty' => 99],
+            ['id' => 50, 'title' => 'brand new', 'manufacturer' => 'new', 'qty' => 5],
+        ], 'id');
+
+        $this->assertSame(2, $affected);
+        $this->assertSame('rewritten', ManticoreDb::table($this->table)->find(1)['title']);
+        $this->assertSame(99, ManticoreDb::table($this->table)->find(1)['qty']);
+        // a column left out of the row keeps its value
+        $this->assertSame('acme', ManticoreDb::table($this->table)->find(1)['manufacturer']);
+        $this->assertSame('brand new', ManticoreDb::table($this->table)->find(50)['title']);
+    }
+
+    public function testUpsertWritesOnlyTheListedColumnsOfAnExistingRow(): void
+    {
+        $this->fill(2);
+
+        ManticoreDb::table($this->table)->upsert([
+            ['id' => 2, 'title' => 'not written', 'qty' => 7],
+        ], 'id', ['qty']);
+
+        $row = ManticoreDb::table($this->table)->find(2);
+        $this->assertSame('row number 2', $row['title']);
+        $this->assertSame(7, $row['qty']);
+    }
+
+    public function testUpsertThrowsWhenTheKeyColumnIsMissing(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('is missing in a row');
+
+        ManticoreDb::table($this->table)->upsert([['title' => 'no id here']], 'id');
+    }
+
+    public function testInRandomOrderReturnsEveryRow(): void
+    {
+        $this->fill(5);
+
+        $this->assertCount(5, ManticoreDb::table($this->table)->inRandomOrder()->get());
+    }
+
+    public function testWhereHelpersFilterTheRows(): void
+    {
+        $this->fill();
+
+        $table = ManticoreDb::table($this->table);
+        $this->assertSame(2, $table->clone()->whereNot('qty', 1)->count());
+        $this->assertSame(2, $table->clone()->whereAny(['manufacturer'], 'acme')->count());
+        // both columns above one: prices are 10, 20, 30 and quantities 1, 2, 3
+        $this->assertSame(2, $table->clone()->whereAll(['price', 'qty'], '>', 1)->count());
+        $this->assertSame(2, $table->clone()->whereNone(['qty'], 1)->count());
+        $this->assertSame(2, $table->clone()->whereRaw('qty > 1')->count());
+    }
+}
