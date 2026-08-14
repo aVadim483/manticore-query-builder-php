@@ -210,7 +210,7 @@ final class CrudTest extends IntegrationTestCase
         $this->assertSame(2, ManticoreDb::table($this->table)->where('price', '>', 15)->count());
     }
 
-    public function testPluckKeepsRowKeys(): void
+    public function testPluckReturnsAList(): void
     {
         ManticoreDb::table($this->table)->insert([
             $this->row(['title' => 'first']),
@@ -219,8 +219,25 @@ final class CrudTest extends IntegrationTestCase
 
         $titles = ManticoreDb::table($this->table)->pluck('title');
 
-        $this->assertSame(['first', 'second'], array_values($titles));
-        $this->assertContainsOnly('int', array_keys($titles));
+        $this->assertSame(['first', 'second'], $titles);
+        $this->assertSame([0, 1], array_keys($titles));
+    }
+
+    public function testPluckKeyedByAnotherColumn(): void
+    {
+        ManticoreDb::table($this->table)->insert([
+            $this->row(['title' => 'first', 'manufacturer' => 'acme']),
+            $this->row(['title' => 'second', 'manufacturer' => 'other']),
+        ]);
+
+        $titles = ManticoreDb::table($this->table)->pluck('title', 'manufacturer');
+
+        $this->assertSame(['acme' => 'first', 'other' => 'second'], $titles);
+    }
+
+    public function testPluckOfAnEmptyResultIsAnEmptyArray(): void
+    {
+        $this->assertSame([], ManticoreDb::table($this->table)->where('price', '>', 1e9)->pluck('title'));
     }
 
     public function testUpdateByCondition(): void

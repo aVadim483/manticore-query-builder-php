@@ -14,6 +14,9 @@ class Builder
     private static array $connections = [];
     private static ?LoggerInterface $logger = null;
 
+    /** @var string the class connection() makes its objects of, see setConnectionClass() */
+    private static string $connectionClass = Connection::class;
+
 
     /**
      * @param array|null $config
@@ -28,6 +31,39 @@ class Builder
         self::$config = $config ?: [];
         self::$logger = $logger;
         self::$connections = [];
+        // the connection class is deliberately kept: it is set once by the framework wrapper,
+        // usually before the config arrives, and init() is called again on every reconfiguration
+    }
+
+    /**
+     * Build the connections of a subclass instead of Connection itself.
+     *
+     * This is what a wrapper for a framework needs to make its own Query answer the queries:
+     * Connection::$queryClass alone is not enough, because the connection this builder makes
+     * would still be the plain one.
+     *
+     * @param string $connectionClass a class extending Connection
+     *
+     * @return void
+     */
+    public static function setConnectionClass(string $connectionClass): void
+    {
+        if (!is_a($connectionClass, Connection::class, true)) {
+            throw new \InvalidArgumentException('The class "' . $connectionClass . '" does not extend ' . Connection::class);
+        }
+        if ($connectionClass !== self::$connectionClass) {
+            self::$connectionClass = $connectionClass;
+            // the connections made so far are of the previous class
+            self::$connections = [];
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public static function connectionClass(): string
+    {
+        return self::$connectionClass;
     }
 
     /**
@@ -90,7 +126,8 @@ class Builder
             if (!isset(self::$config['connections'][$connectionName])) {
                 throw new \RuntimeException('The connection named "' . $connectionName . '" was not defined in the config');
             }
-            self::$connections[$connectionName] = new Connection(self::$config['connections'][$connectionName]);
+            $connectionClass = self::$connectionClass;
+            self::$connections[$connectionName] = new $connectionClass(self::$config['connections'][$connectionName]);
             if (self::$logger) {
                 self::$connections[$connectionName]->setLogger(self::$logger);
             }

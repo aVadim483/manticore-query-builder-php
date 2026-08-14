@@ -21,6 +21,16 @@ class Connection
     /** @var array last ResultSet, filled by every Query of this connection, see Query::setResultSlot() */
     private array $resultSlot = [];
 
+    /**
+     * The class query() makes its objects of. A wrapper for a framework can subclass this
+     * connection, point the property at its own subclass of Query and get the queries of the
+     * whole connection built by it - the schema pool and the result slot are still shared,
+     * because query() keeps handing them over.
+     *
+     * @var string
+     */
+    protected string $queryClass = Query::class;
+
 
     /**
      * @param array $config
@@ -60,7 +70,7 @@ class Connection
         $config = $this->config;
         $config['client'] = $this->client;
 
-        $query = new Query($config, null, $this->logger);
+        $query = new $this->queryClass($config, null, $this->logger);
         // one DESCRIBE per table for the whole connection, not per built query
         $query->setSchemaPool($this->schemaPool);
         // ... and one place to pick the ResultSet up from, whatever the query returned

@@ -2139,16 +2139,28 @@ class Query
     }
 
     /**
-     * @param string $name
+     * The values of one column, optionally keyed by another one.
+     *
+     *      pluck('title')       - a list of titles
+     *      pluck('title', 'id') - the same titles, keyed by the id column
+     *
+     * Only the columns asked for are selected, so an earlier select() is overridden: the answer
+     * consists of these columns and nothing else.
+     *
+     * @param string $column
+     * @param string|null $key the column to key the list by, a plain list without it
      *
      * @return array
      */
-    public function pluck(string $name): array
+    public function pluck(string $column, ?string $key = null): array
     {
-        $result = $this->get();
+        // deliberately not get(): a subclass is free to answer that one with something that is
+        // not an array at all, while this method is defined to return one
+        $this->selectColumns($key === null ? $column : [$column, $key]);
+        $result = $this->exec()->result();
 
         if ($result) {
-            return array_combine(array_keys($result), array_column($result, $name));
+            return array_column($result, $column, $key);
         }
 
         return [];

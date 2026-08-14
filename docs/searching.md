@@ -49,9 +49,16 @@ $res = $query->get('*');
 // Returns the first row according to the given conditions
 $record = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 500)->first();
 
-// Returns array of values from field 'name'
-$record = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 500)->pluck('name');
+// Returns a list of values of the column 'name'
+$names = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 500)->pluck('name');
+// ['Galaxy S10', 'Galaxy S20', ...]
+
+// The second argument keys that list by another column
+$names = ManticoreDb::table('?products')->match('galaxy')->pluck('name', 'id');
+// [128 => 'Galaxy S10', 129 => 'Galaxy S20', ...]
 ```
+
+Only the columns asked for are selected, so `pluck()` overrides an earlier `select()`.
 
 ## Select statements
 
