@@ -2147,12 +2147,16 @@ class Query
      * Only the columns asked for are selected, so an earlier select() is overridden: the answer
      * consists of these columns and nothing else.
      *
+     * The return type is left out of the signature on purpose: a wrapper for a framework
+     * overrides this method to answer with a collection of its own, and PHP would not let it
+     * narrow a declared "array" to anything else.
+     *
      * @param string $column
      * @param string|null $key the column to key the list by, a plain list without it
      *
      * @return array
      */
-    public function pluck(string $column, ?string $key = null): array
+    public function pluck(string $column, ?string $key = null)
     {
         // deliberately not get(): a subclass is free to answer that one with something that is
         // not an array at all, while this method is defined to return one

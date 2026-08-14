@@ -21,4 +21,21 @@ final class SubclassedQuery extends Query
     {
         return ['wrapped' => func_num_args() ? $this->get($columns, ...$more) : $this->get()];
     }
+
+    /**
+     * Answers with an object rather than an array.
+     *
+     * This is only possible while the parent leaves the return type out of the signature -
+     * declaring "array" there would make this class fatal at compile time, which is exactly
+     * what the test built on this method guards against.
+     *
+     * @param string $column
+     * @param string|null $key
+     *
+     * @return \ArrayObject
+     */
+    public function pluck(string $column, ?string $key = null)
+    {
+        return new \ArrayObject(parent::pluck($column, $key));
+    }
 }

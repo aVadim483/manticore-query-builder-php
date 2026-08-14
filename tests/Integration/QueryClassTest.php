@@ -75,6 +75,27 @@ final class QueryClassTest extends IntegrationTestCase
     }
 
     /**
+     * pluck() carries no return type in its signature, so a wrapper can answer it with a
+     * collection of its own - declaring "array" there would make such a subclass fatal
+     */
+    public function testTheSubclassedQueryCanAnswerPluckWithAnObject(): void
+    {
+        ManticoreDb::setConnectionClass(SubclassedConnection::class);
+        $table = $this->createProductsTable();
+        ManticoreDb::table($table)->insert([
+            ['title' => 'first', 'price' => 1.0],
+            ['title' => 'second', 'price' => 2.0],
+        ]);
+
+        /** @var SubclassedQuery $query */
+        $query = ManticoreDb::table($table);
+        $titles = $query->orderBy('price')->pluck('title');
+
+        $this->assertInstanceOf(\ArrayObject::class, $titles);
+        $this->assertSame(['first', 'second'], $titles->getArrayCopy());
+    }
+
+    /**
      * The slot is handed over by reference, so a subclassed Query must still fill it
      */
     public function testTheSubclassedQueryFillsTheResultSlot(): void
