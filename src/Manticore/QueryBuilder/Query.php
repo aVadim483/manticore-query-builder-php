@@ -265,7 +265,8 @@ class Query
         $types = $this->columnTypes();
         $result = [];
         foreach ($rows as $num => $row) {
-            $resNum = $row['_id'] ?? ($row['id'] ?? $num);
+            // the id of the document keys the result when it is among the selected columns
+            $resNum = $row['id'] ?? $num;
             foreach ($row as $col => $val) {
                 if (isset($types[$col])) {
                     switch ($types[$col]) {
@@ -364,15 +365,8 @@ class Query
                 $response = $this->client->insert($parsedSql['query'], $this->params);
             }
             elseif ($parsedSql['command'] === 'SELECT') {
-                $generated = [];
-                if (!$this->select) {
-                    $generated[] = 'id as _id';
-                }
-                if ($this->_needScore()) {
-                    $generated[] = 'weight() as _score';
-                }
-                $query = $generated
-                    ? 'SELECT ' . implode(', ', $generated) . ', ' . substr($parsedSql['query'], 6)
+                $query = $this->_needScore()
+                    ? 'SELECT weight() as _score, ' . substr($parsedSql['query'], 6)
                     : $parsedSql['query'];
                 $response = $this->client->select($query, $this->params);
             }

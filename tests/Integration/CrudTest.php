@@ -141,8 +141,6 @@ final class CrudTest extends IntegrationTestCase
         $this->assertIsArray($row);
         $this->assertSame('Galaxy S23 Ultra', $row['title']);
         $this->assertSame($id, $row['id']);
-        // the row of find()/first() is shaped like the row of get(), generated "_id" included
-        $this->assertSame($id, $row['_id']);
     }
 
     /**
@@ -187,7 +185,7 @@ final class CrudTest extends IntegrationTestCase
         $rows = ManticoreDb::table($this->table)->get();
 
         $this->assertArrayHasKey($id, $rows);
-        $this->assertSame($id, $rows[$id]['_id']);
+        $this->assertSame($id, $rows[$id]['id']);
     }
 
     public function testSelectedColumnsOnlyAreReturned(): void

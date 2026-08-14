@@ -76,14 +76,14 @@ final class ResultSetTest extends IntegrationTestCase
         $result = ManticoreDb::table($this->table)->search();
 
         // no match, so no weight: it would be 1 for every row anyway
-        $this->assertSame(['_id', 'id', 'title', 'price'], $result->columns());
+        $this->assertSame(['id', 'title', 'price'], $result->columns());
     }
 
     public function testColumnsIncludeTheScoreOfAFullTextQuery(): void
     {
         $result = ManticoreDb::table($this->table)->match('item')->search();
 
-        $this->assertSame(['_id', '_score', 'id', 'title', 'price'], $result->columns());
+        $this->assertSame(['_score', 'id', 'title', 'price'], $result->columns());
     }
 
     public function testFirstReturnsFirstRow(): void

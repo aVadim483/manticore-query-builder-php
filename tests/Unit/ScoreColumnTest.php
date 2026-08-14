@@ -46,10 +46,7 @@ final class ScoreColumnTest extends UnitTestCase
         $client = new FakeClient($this->productColumnTypes());
         $this->queryFor($client)->where('price', '>', 100)->get();
 
-        $sql = $this->sentSelect($client);
-        $this->assertStringNotContainsString('weight()', $sql);
-        // the id is still generated, only the weight is gone
-        $this->assertStringContainsString('id as _id', $sql);
+        $this->assertStringNotContainsString('weight()', $this->sentSelect($client));
     }
 
     public function testWithScoreAsksForItWithoutAMatch(): void
@@ -79,6 +76,6 @@ final class ScoreColumnTest extends UnitTestCase
 
         $sql = $this->sentSelect($client);
         $this->assertStringContainsString('weight() as _score', $sql);
-        $this->assertStringNotContainsString('id as _id', $sql);
+        $this->assertStringContainsString('title', $sql);
     }
 }

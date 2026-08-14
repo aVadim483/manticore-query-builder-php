@@ -25,7 +25,7 @@ $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 110
 foreach($res->result() as $id => $row) {
     // $id - ID of found record
     // $row - array <field_name> => <field_value>
-    // plus the generated "_id" field, and "_score" when the query has a match()
+    // plus the generated "_score" field when the query has a match()
 }
 
 // weight() is 1 for every row of a query without a match(), so "_score" is only selected
