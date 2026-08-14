@@ -109,7 +109,7 @@ indistinguishable from an empty table.
 try {
     $rows = ManticoreDb::table('?products')->whereRegex('title', 'galaxy')->get();
 }
-catch (vadim\Manticore\QueryBuilder\QueryErrorException $e) {
+catch (\avadim\Manticore\QueryBuilder\QueryErrorException $e) {
     $e->getMessage();   // what the server said
     $e->sql();          // the statement it rejected
 }
