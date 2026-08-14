@@ -10,3 +10,5 @@
 * [ResultSet Class](result_set.md)
 * [Logging](logging.md)
 
+Документация на русском языке — в папке [ru](ru/README.md).
+

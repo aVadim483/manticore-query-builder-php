@@ -1,26 +1,26 @@
-# Manticore Search Query Builder for PHP (unofficial PHP client)
+# Manticore Search Query Builder for PHP (неофициальный PHP-клиент)
 
-Jump To:
-* [Create table](#create-table)
-* [Alter table](#alter-table)
-* [Drop tables](#drop-tables)
+Содержание:
+* [Создание таблицы](#создание-таблицы)
+* [Изменение таблицы](#изменение-таблицы)
+* [Удаление таблиц](#удаление-таблиц)
 * [SHOW TABLES](#show-tables)
 * [SHOW CREATE TABLE](#show-create-table)
 * [DESCRIBE TABLE](#describe-table)
 * [SHOW TABLE STATUS](#show-table-table_name-status)
 * [SHOW TABLE SETTINGS](#show-table-table_name-settings)
 
-## Create table
+## Создание таблицы
 
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
 
-// Raw SQL query
+// сырой SQL-запрос
 $res = ManticoreDb::sql("create table products(title text, price float engine='columnar') engine='rowwise'")->exec();
 
-// Use a closure for table schema
+// схему таблицы можно описать замыканием
 $res = ManticoreDb::create('demo_test', function (SchemaTable $table) {
-    // set columns
+    // колонки
     $table->text('title')->stored();
     $table->text('article')->indexed();
     $table->string('country')->attribute();
@@ -29,17 +29,17 @@ $res = ManticoreDb::create('demo_test', function (SchemaTable $table) {
     $table->float('price');
     $table->multi('list');
     $table->bool('boo');
-    
-    // set table options
+
+    // настройки таблицы
     $table->tableEngine('rowwise');
     $table->tableMorphology(['lemmatize_uk_all', 'lemmatize_de_all']);
     $table->tableOptions(['html_strip' => 1, 'html_index_attrs' => 'img=alt,title; a=title;']);
 });
 
-// Use an array for fields description
+// либо массивом с описанием полей
 $fields = [
-    // 'field_name' => 'field_type',
-    // or 'field_name' => [field_options],
+    // 'имя_поля' => 'тип_поля',
+    // либо 'имя_поля' => [опции],
     'title' => 'text stored',
     'article' => ['text', 'indexed'],
     'country' => ['type' => 'string', 'attribute', 'fast_fetch' => 0],
@@ -49,51 +49,51 @@ $fields = [
     'list' => 'multi',
     'boo' => 'bool',
 ];
-// Create table without options
+// таблица без опций
 $res = ManticoreDb::create('demo_test', $fields);
 $res = ManticoreDb::table('demo_test')->create($fields);
 
-// Create table with options
+// таблица с опциями
 $options = [
     'morphology' => ['lemmatize_uk_all', 'lemmatize_de_all'],
-    'html_strip' => 1, 
+    'html_strip' => 1,
     'html_index_attrs' => 'img=alt,title; a=title;'
 ];
 $res = ManticoreDb::table('demo_test')->options($options)->create($fields);
 $res = ManticoreDb::create('demo_test', $fields, $options);
 
 $res = ManticoreDb::createIfNotExists('demo_test', $fields, $options);
-if (!ManticoreDb::hasTable('demo_test') {
-$res = ManticoreDb::create('demo_test', $fields, $options);
+if (!ManticoreDb::hasTable('demo_test')) {
+    $res = ManticoreDb::create('demo_test', $fields, $options);
 }
 ```
 
-## Alter table
+## Изменение таблицы
 
-Columns are added, dropped and widened one at a time -- the server takes a single operation per
-`ALTER` statement.
+Колонки добавляются, удаляются и расширяются по одной — сервер выполняет одну операцию на
+один `ALTER`.
 
 ```php
-// Add a column; the type is written the same way as in create()
+// добавить колонку; тип пишется так же, как в create()
 $res = ManticoreDb::table('products')->addColumn('group_id', 'integer');
 $res = ManticoreDb::table('products')->addColumn('title', 'text indexed stored');
 $res = ManticoreDb::table('products')->addColumn('article', 'text', 'indexed');
 $res = ManticoreDb::table('products')->addColumn('time', ['type' => 'timestamp', 'engine' => 'columnar']);
 
-// Drop a column, or several of them
+// удалить колонку или несколько
 $res = ManticoreDb::table('products')->dropColumn('price');
 $res = ManticoreDb::table('products')->dropColumn(['price', 'qty']);
 
-// Widen an integer column; int -> bigint is the only change of type the server makes
+// расширить целочисленную колонку; int -> bigint — единственная смена типа, которую делает сервер
 $res = ManticoreDb::table('products')->modifyColumn('group_id', 'bigint');
 
-// Change the full-text settings of the table (the columns are not touched)
+// изменить полнотекстовые настройки таблицы (колонки не затрагиваются)
 $res = ManticoreDb::table('products')->alterSettings(['html_strip' => 1, 'morphology' => ['lemmatize_en_all']]);
 
-// Rename the table (needs a server with Manticore Buddy running)
+// переименовать таблицу (нужен сервер с запущенным Manticore Buddy)
 $res = ManticoreDb::table('?products')->rename('?goods');
 
-// The same operations from the facade, with the table as the first argument
+// те же операции через фасад — имя таблицы первым аргументом
 $res = ManticoreDb::addColumn('products', 'group_id', 'integer');
 $res = ManticoreDb::dropColumn('products', 'price');
 $res = ManticoreDb::modifyColumn('products', 'group_id', 'bigint');
@@ -101,18 +101,18 @@ $res = ManticoreDb::alterSettings('products', ['html_strip' => 1]);
 $res = ManticoreDb::rename('?products', '?goods');
 ```
 
-Things to keep in mind:
+О чём стоит помнить:
 
-* A new scalar attribute is filled with an empty value of its type in the rows that are already
-  there, and the table cannot be queried while the column is being added.
-* The `id` column can neither be dropped nor modified.
-* A field that is a full-text field and a string attribute at the same time takes two drops of
-  the same name: `dropColumn(['title', 'title'])`.
-* `ALTER` is not transactional. When a chain of statements is sent (`dropColumn()` with several
-  names), it stops at the first error, the statements before it stay applied, and
-  `$res->sqlQuery()` reports the queries that really reached the server.
-* Errors of a schema statement are not thrown: `$res->success()` is `false` and `$res->error()` holds the message,
-  just like with the other statements.
+* новый скалярный атрибут заполняется пустым значением своего типа в уже существующих строках,
+  и во время добавления колонки таблица недоступна для запросов;
+* колонку `id` нельзя ни удалить, ни изменить;
+* поле, которое одновременно является полнотекстовым и строковым атрибутом, требует двух
+  удалений одного имени: `dropColumn(['title', 'title'])`;
+* `ALTER` не транзакционен. Если отправлена цепочка операций (`dropColumn()` с несколькими
+  именами), она останавливается на первой ошибке, предыдущие остаются применёнными, а
+  `$res->sqlQuery()` показывает запросы, которые действительно дошли до сервера;
+* ошибки схемных команд не бросаются: `$res->success()` вернёт `false`, а `$res->error()` —
+  текст ошибки, как и у остальных команд такого рода.
 
 ```php
 $res = ManticoreDb::table('products')->dropColumn('nonexistent');
@@ -121,7 +121,7 @@ if (!$res->success()) {
 }
 ```
 
-## Drop tables
+## Удаление таблиц
 
 ```php
 $res = ManticoreDb::table('test')->drop();
@@ -131,14 +131,14 @@ $res = ManticoreDb::drop('test');
 $res = ManticoreDb::dropIfExists('test');
 ```
 
-## Listing tables
+## Список таблиц
 
 ### SHOW TABLES
 
 ```php
-// Plain SQL
+// обычный SQL
 $res = ManticoreDb::sql('SHOW TABLES')->get();
-// or with the method
+// либо методом
 $res = ManticoreDb::showTables();
 ```
 | Index         | Table         | Name        | Type |
@@ -147,16 +147,16 @@ $res = ManticoreDb::showTables();
 
 
 ```php
-// Get tables by pattern
+// таблицы по шаблону
 $res = ManticoreDb::sql('SHOW TABLES LIKE abc%')->get();
 $res = ManticoreDb::showTables('abc%');
 
-// Get tables with prefix
+// таблицы с префиксом
 $res = ManticoreDb::showTables();
-// ... equal to
+// ... то же самое, что
 $res = ManticoreDb::showTables('?%');
 
-// Get all tables (ignore prefix)
+// все таблицы (префикс игнорируется)
 $res = ManticoreDb::showTables('%');
 ```
 
@@ -164,7 +164,7 @@ $res = ManticoreDb::showTables('%');
 
 ```php
 $res = ManticoreDb::showCreate('test');
-// Result is string like
+// результат — строка вида
 // "CREATE TABLE test (
 //      price float,
 //      title text,
@@ -190,9 +190,9 @@ $res = ManticoreDb::tableDescribe('test');
 ```php
 $res = ManticoreDb::sql('SHOW TABLE test STATUS')->get();
 $res = ManticoreDb::table('test')->status()->result();
-$res = ManticoreDb::table('other')->status('test')->result(); // the argument wins over table()
+$res = ManticoreDb::table('other')->status('test')->result(); // аргумент важнее, чем table()
 $res = ManticoreDb::tableStatus('test');
-// Result is array with variables describing the status of the table 
+// результат — массив переменных, описывающих состояние таблицы
 ```
 
 ### SHOW TABLE <table_name> SETTINGS
@@ -200,7 +200,7 @@ $res = ManticoreDb::tableStatus('test');
 ```php
 $res = ManticoreDb::sql('SHOW TABLE test SETTINGS')->get();
 $res = ManticoreDb::table('test')->settings()->result();
-$res = ManticoreDb::table('other')->settings('test')->result(); // the argument wins over table()
+$res = ManticoreDb::table('other')->settings('test')->result(); // аргумент важнее, чем table()
 $res = ManticoreDb::tableSettings('test');
-// Result is array with settings of the table 
+// результат — массив настроек таблицы
 ```

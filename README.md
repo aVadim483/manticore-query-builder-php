@@ -14,8 +14,11 @@ Features
 * Clear Laravel-like syntax
 * Multiple INSERT and REPLACE
 * Support MATCH() and multi-level WHERE for SELECT
-* Support faceted search
+* Support faceted search and JOIN of two tables
 * Column types are applied in both directions: PHP values on write, PHP types on read
+* The helpers of the Laravel query builder: aggregates, chunked walks, conditional building,
+  conditions on dates, upsert and the rest
+* A rejected read throws, a rejected write answers with false or zero and keeps its reason
 * PSR-3 logging of queries and EXPLAIN of full-text expressions
 
 Manticore Search server documentation: https://manual.manticoresearch.com/
@@ -106,10 +109,18 @@ $res = ManticoreDb::table('?products')->insertResultSet($multipleRows);
 $updated = ManticoreDb::table('?products')->where('price', '<', 100)->update(['on_sale' => true]);
 $deleted = ManticoreDb::table('?products')->where('price', '<', 1)->delete();
 
-// A failed query is not thrown - insert() gives false, update()/delete() give 0,
+// A failed write is not thrown - insert() gives false, update()/delete() give 0,
 // and the reason is in the ResultSet left behind
 if (!ManticoreDb::table('?products')->insert($singleRow)) {
     $error = ManticoreDb::lastResultSet()->error();
+}
+
+// A failed read is thrown instead: null in place of the rows would look like an empty table
+try {
+    $rows = ManticoreDb::table('?products')->where('nosuchcolumn', 1)->get();
+}
+catch (vadim\Manticore\QueryBuilder\QueryErrorException $e) {
+    $error = $e->getMessage();
 }
 
 // Search: get() returns rows keyed by document id, with values cast back to PHP types
@@ -125,6 +136,8 @@ More detailed documentation is available in the [/docs](/docs/README.md) folder:
 [tables](/docs/tables.md),
 [result set](/docs/result_set.md),
 [logging](/docs/logging.md).
+
+Документация на русском языке — в папке [/docs/ru](/docs/ru/README.md).
 
 ## Tests
 

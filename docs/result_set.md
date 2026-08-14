@@ -24,11 +24,11 @@ if (!ManticoreDb::table('?products')->insert(['title' => 'Laptop'])) {
 }
 ```
 
-This matters more here than it would in Laravel: a failed query is **not** thrown as an
+This matters more here than it would in Laravel: a failed **write** is not thrown as an
 exception, it is reported through ```success()``` and ```error()```. The bare ```false``` of
 ```insert()```/```replace()``` and the bare ```0``` of ```update()```/```delete()``` carry no
 reason with them, and ```0``` does not even tell "nothing matched the condition" from "the
-statement failed".
+statement failed". Reads are the other way round - see [Errors](#errors) below.
 
 The full set of write methods, three per statement where an id makes sense:
 
