@@ -200,7 +200,10 @@ class Query
         }
 
         if (!$this->command) {
-            $this->selectColumns('*');
+            // not selectColumns('*'): an empty column list renders as "*" anyway, while filling
+            // it in would look like the caller had asked for the columns, and the generated
+            // "_id"/"_score" are only added when they did not
+            $this->command = 'SELECT';
         }
 
         $query = [

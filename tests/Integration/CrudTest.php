@@ -140,10 +140,22 @@ final class CrudTest extends IntegrationTestCase
 
         $this->assertIsArray($row);
         $this->assertSame('Galaxy S23 Ultra', $row['title']);
-        // find()/first() keep the explicit "SELECT *", so the row carries "id",
-        // while get()/search() without arguments rewrite it to "id as _id"
         $this->assertSame($id, $row['id']);
-        $this->assertArrayNotHasKey('_id', $row);
+        // the row of find()/first() is shaped like the row of get(), generated "_id" included
+        $this->assertSame($id, $row['_id']);
+    }
+
+    /**
+     * Which method the row came from must not change its columns
+     */
+    public function testFirstAndGetShapeTheRowAlike(): void
+    {
+        ManticoreDb::table($this->table)->insert($this->row());
+
+        $first = ManticoreDb::table($this->table)->first();
+        $fromGet = reset(ManticoreDb::table($this->table)->get());
+
+        $this->assertSame(array_keys($fromGet), array_keys($first));
     }
 
     public function testFindReturnsNullForMissingId(): void
