@@ -12,6 +12,7 @@ Jump To:
 * [maxMatches()](#maxmatches--)
 * [Working with JSON attributes](#working-with-json-attributes)
 * [Searching for what a user typed](#searching-for-what-a-user-typed)
+* [Conditions on dates](#conditions-on-dates)
 * [Aggregates and single values](#aggregates-and-single-values)
 * [Walking over a large result](#walking-over-a-large-result)
 * [Conditional building](#conditional-building)
@@ -419,6 +420,40 @@ $res = ManticoreDb::table('?products')->match('brown | fox')->explain('dot');
 ```
 The rows of ```$res->result()``` carry the tree under the ```Variable_name``` / ```Value```
 keys, the same way ```tableStatus()``` and ```tableSettings()``` report their values.
+
+## Conditions on dates
+
+A timestamp column can be filtered by the calendar:
+
+```php
+// a calendar day, written as a range of timestamps
+$res = ManticoreDb::table('?products')->whereDate('created_at', '2024-01-31')->get();
+$res = ManticoreDb::table('?products')->whereDate('created_at', '>=', '2024-01-31')->get();
+
+// a year, likewise a range
+$res = ManticoreDb::table('?products')->whereYear('created_at', 2024)->get();
+
+// a month or a day of any year, and a time of day
+$res = ManticoreDb::table('?products')->whereMonth('created_at', 11)->get();
+$res = ManticoreDb::table('?products')->whereDay('created_at', 31)->get();
+$res = ManticoreDb::table('?products')->whereTime('created_at', '>=', '14:30')->get();
+```
+
+Two things are worth knowing about these.
+
+**They are read as UTC.** `YEAR()`, `MONTH()` and the rest of the date functions of Manticore
+count in UTC and know nothing of the timezone of PHP, so the ranges are built in UTC as well —
+otherwise the same query would mean two different things depending on which of the two methods
+answered it. An application in another timezone shifts its dates before passing them in.
+
+**`whereMonth()`, `whereDay()` and `whereTime()` select a hidden column.** Manticore takes no
+function call in `WHERE` — `WHERE MONTH(created_at) = 11` is a syntax error — but it does take
+the alias of a computed column. So the expression is selected under a name of its own, the
+condition is written against that name, and the column is dropped from the rows before they are
+handed over. Nothing of it shows up in the answer; it is only visible in `toSql()`.
+
+`whereDate()` and `whereYear()` need none of that: a date is a range of timestamps, and a range
+is a plain condition.
 
 ## Aggregates and single values
 

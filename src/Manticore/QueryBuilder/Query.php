@@ -48,6 +48,18 @@ class Query
     /** @var bool|null whether to select weight(); null decides by the presence of a match() */
     private ?bool $score = null;
 
+    /**
+     * Computed columns the conditions refer to, alias => expression.
+     *
+     * Manticore takes no function call in WHERE - "WHERE MONTH(created_at) = 11" is a syntax
+     * error - but it does take the alias of a computed column. So the expression is selected
+     * under a name of its own, the condition is written against that name, and the column is
+     * dropped from the rows before they are handed over.
+     *
+     * @var array
+     */
+    private array $exprColumns = [];
+
     private array $group = [];
     private array $having = [];
     private array $order = [];
@@ -165,6 +177,10 @@ class Query
 
     public static function quoteParam($param): string
     {
+        if ($param instanceof Expression) {
+            // a raw expression stands for a piece of SQL: quoting it would turn it into a string
+            return (string)$param;
+        }
         if (!is_string($param) && is_numeric($param)) {
             $result = (string)$param;
             if (is_float($param)) {
@@ -307,6 +323,9 @@ class Query
                         $row[$col] = $this->_castFuncResult($m[1], $val);
                     }
                 }
+            }
+            foreach ($this->exprColumns as $alias => $expression) {
+                unset($row[$alias]);
             }
             $result[$resNum] = $row;
         }
@@ -597,6 +616,20 @@ class Query
     public const MATCH_SPECIAL_CHARS = '\()|-!@~"&/^$=<>';
 
     /**
+     * A piece of SQL to be used where a value is expected, without quoting or escaping
+     *
+     *      where('price', '>', Query::raw('qty * 2'))
+     *
+     * @param string $value
+     *
+     * @return Expression
+     */
+    public static function raw(string $value): Expression
+    {
+        return new Expression($value);
+    }
+
+    /**
      * Make a piece of text a literal of a full-text query.
      *
      * What a user typed into a search box is not an expression: a dash in "iPhone -Pro" would
@@ -622,6 +655,172 @@ class Query
      *
      * @return $this
      */
+    /**
+     * The rows of a given calendar date.
+     *
+     *      whereDate('created_at', '2024-01-31')
+     *      whereDate('created_at', '>=', '2024-01-31')
+     *
+     * A date is a range of timestamps, so this is written as a range rather than as a call of
+     * DATE() - which Manticore would not take in WHERE anyway.
+     *
+     * Dates are read as UTC, because that is what the server counts in: YEAR(), MONTH() and the
+     * rest of its functions know nothing of the timezone of PHP. An application living in
+     * another timezone has to shift its dates before passing them in.
+     *
+     * @param string $column
+     * @param mixed $operator
+     * @param mixed|null $value
+     *
+     * @return $this
+     */
+    public function whereDate(string $column, $operator, $value = null): Query
+    {
+        [$op, $date] = self::_comparisonArgs(func_get_args());
+        $time = is_numeric($date) ? (int)$date : strtotime((string)$date . ' UTC');
+        if ($time === false) {
+            throw new \InvalidArgumentException('The date "' . $date . '" cannot be read');
+        }
+        $start = (int)strtotime(gmdate('Y-m-d 00:00:00', $time) . ' UTC');
+
+        return $this->_whereRange($column, $op, $start, $start + 86399);
+    }
+
+    /**
+     * The rows of a given year, written as a range of timestamps. Read as UTC, see whereDate()
+     *
+     * @param string $column
+     * @param mixed $operator
+     * @param mixed|null $value
+     *
+     * @return $this
+     */
+    public function whereYear(string $column, $operator, $value = null): Query
+    {
+        [$op, $year] = self::_comparisonArgs(func_get_args());
+        $start = (int)strtotime($year . '-01-01 00:00:00 UTC');
+        $end = (int)strtotime(($year + 1) . '-01-01 00:00:00 UTC') - 1;
+
+        return $this->_whereRange($column, $op, $start, $end);
+    }
+
+    /**
+     * The rows of a given month of any year, e.g. whereMonth('created_at', 11)
+     *
+     * @param string $column
+     * @param mixed $operator
+     * @param mixed|null $value
+     *
+     * @return $this
+     */
+    public function whereMonth(string $column, $operator, $value = null): Query
+    {
+        [$op, $value] = self::_comparisonArgs(func_get_args());
+
+        return $this->_whereComputed('MONTH(' . $column . ')', $op, (int)$value);
+    }
+
+    /**
+     * The rows of a given day of the month, e.g. whereDay('created_at', 31)
+     *
+     * @param string $column
+     * @param mixed $operator
+     * @param mixed|null $value
+     *
+     * @return $this
+     */
+    public function whereDay(string $column, $operator, $value = null): Query
+    {
+        [$op, $value] = self::_comparisonArgs(func_get_args());
+
+        return $this->_whereComputed('DAY(' . $column . ')', $op, (int)$value);
+    }
+
+    /**
+     * The rows of a given time of day, e.g. whereTime('created_at', '>=', '14:30'), counted
+     * in UTC by the server
+     *
+     * @param string $column
+     * @param mixed $operator
+     * @param mixed|null $value
+     *
+     * @return $this
+     */
+    public function whereTime(string $column, $operator, $value = null): Query
+    {
+        [$op, $value] = self::_comparisonArgs(func_get_args());
+        $parts = array_map('intval', explode(':', (string)$value));
+        $seconds = ($parts[0] ?? 0) * 3600 + ($parts[1] ?? 0) * 60 + ($parts[2] ?? 0);
+        $expression = 'HOUR(' . $column . ') * 3600 + MINUTE(' . $column . ') * 60 + SECOND(' . $column . ')';
+
+        return $this->_whereComputed($expression, $op, $seconds);
+    }
+
+    /**
+     * whereX($column, $value) is the shortcut for whereX($column, '=', $value)
+     *
+     * @param array $args the arguments of the caller, the column included
+     *
+     * @return array [operator, value]
+     */
+    private static function _comparisonArgs(array $args): array
+    {
+        if (count($args) < 3 || $args[2] === null) {
+            return ['=', $args[1] ?? null];
+        }
+
+        return [strtoupper(trim((string)$args[1])), $args[2]];
+    }
+
+    /**
+     * A comparison against a span of values, e.g. a calendar day among timestamps
+     *
+     * @param string $column
+     * @param string $operator
+     * @param int $start
+     * @param int $end
+     *
+     * @return $this
+     */
+    private function _whereRange(string $column, string $operator, int $start, int $end): Query
+    {
+        switch ($operator) {
+            case '=':
+                return $this->whereBetween($column, [$start, $end]);
+            case '!=':
+            case '<>':
+                return $this->whereNotBetween($column, [$start, $end]);
+            case '>':
+                return $this->where($column, '>', $end);
+            case '>=':
+                return $this->where($column, '>=', $start);
+            case '<':
+                return $this->where($column, '<', $start);
+            case '<=':
+                return $this->where($column, '<=', $end);
+        }
+
+        throw new \InvalidArgumentException('The operator "' . $operator . '" cannot be used with a date');
+    }
+
+    /**
+     * Select an expression under a name of its own and write the condition against that name -
+     * the only way to filter by a function, see $exprColumns
+     *
+     * @param string $expression
+     * @param string $operator
+     * @param mixed $value
+     *
+     * @return $this
+     */
+    private function _whereComputed(string $expression, string $operator, $value): Query
+    {
+        $alias = '_expr' . (count($this->exprColumns) + 1);
+        $this->exprColumns[$alias] = $expression;
+
+        return $this->where($alias, $operator, $value);
+    }
+
     /**
      * Alias of match(), for the where*() naming.
      *
@@ -887,6 +1086,10 @@ class Query
         }
         else {
             $result = '*';
+        }
+
+        foreach ($this->exprColumns as $alias => $expression) {
+            $result .= ', ' . $expression . ' as ' . $alias;
         }
 
         if ($this->highlight) {

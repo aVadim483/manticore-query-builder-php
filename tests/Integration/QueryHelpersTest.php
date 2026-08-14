@@ -389,6 +389,126 @@ final class QueryHelpersTest extends IntegrationTestCase
         $this->assertCount(3, ManticoreDb::table($this->table)->match(ManticoreDb::escapeMatch('number row'))->get());
     }
 
+    /**
+     * @return string a table of four rows with known timestamps
+     */
+    private function datesTable(): string
+    {
+        $table = $this->createTable(['title' => 'text', 'created_at' => 'timestamp'], 'dates');
+        $rows = [];
+        foreach (['2023-11-14 22:13:20', '2023-11-03 10:00:00', '2022-12-02 15:30:00', '2024-01-31 09:05:00'] as $i => $date) {
+            $rows[] = ['id' => $i + 1, 'title' => 'row ' . ($i + 1), 'created_at' => strtotime($date . ' UTC')];
+        }
+        ManticoreDb::table($table)->insert($rows);
+
+        return $table;
+    }
+
+    public function testWhereDateMatchesACalendarDay(): void
+    {
+        $table = $this->datesTable();
+
+        $this->assertSame(['row 1'], array_values(ManticoreDb::table($table)->whereDate('created_at', '2023-11-14')->pluck('title')));
+        $this->assertSame(2, ManticoreDb::table($table)->whereDate('created_at', '>=', '2023-11-14')->count());
+        $this->assertSame(2, ManticoreDb::table($table)->whereDate('created_at', '<', '2023-11-14')->count());
+    }
+
+    public function testWhereYearMonthAndDay(): void
+    {
+        $table = $this->datesTable();
+
+        $this->assertSame(2, ManticoreDb::table($table)->whereYear('created_at', 2023)->count());
+        $this->assertSame(2, ManticoreDb::table($table)->whereMonth('created_at', 11)->count());
+        $this->assertSame(['row 4'], array_values(ManticoreDb::table($table)->whereDay('created_at', 31)->pluck('title')));
+    }
+
+    public function testWhereTimeComparesTheTimeOfDay(): void
+    {
+        $table = $this->datesTable();
+
+        $this->assertSame(2, ManticoreDb::table($table)->whereTime('created_at', '>=', '15:00')->count());
+        $this->assertSame(['row 4'], array_values(ManticoreDb::table($table)->whereTime('created_at', '<', '10:00')->pluck('title')));
+    }
+
+    public function testDateConditionsCombine(): void
+    {
+        $table = $this->datesTable();
+
+        $titles = ManticoreDb::table($table)
+            ->whereYear('created_at', 2023)
+            ->whereMonth('created_at', 11)
+            ->whereDay('created_at', 3)
+            ->pluck('title');
+
+        $this->assertSame(['row 2'], array_values($titles));
+    }
+
+    /**
+     * A function call is not allowed in WHERE, so the expression is selected under a name of
+     * its own - which must not show up among the columns of the answer
+     */
+    public function testTheComputedColumnIsHiddenFromTheRows(): void
+    {
+        $table = $this->datesTable();
+
+        $row = ManticoreDb::table($table)->whereMonth('created_at', 11)->orderBy('id')->first();
+
+        $this->assertSame(['id', 'title', 'created_at'], array_keys($row));
+    }
+
+    public function testStatementAndSelectRunRawSql(): void
+    {
+        $this->fill();
+        $connection = ManticoreDb::connection();
+
+        $this->assertTrue($connection->statement('SELECT 1'));
+        $this->assertFalse($connection->statement('SELECT * FROM no_such_table_here'));
+        $this->assertSame(3, ManticoreDb::select('SELECT COUNT(*) as c FROM ' . $this->table)[0]['c']);
+    }
+
+    public function testTransactionCommitsAndRollsBack(): void
+    {
+        ManticoreDb::transaction(function ($connection) {
+            $connection->table($this->table)->insert(['id' => 1, 'title' => 'kept']);
+        });
+        $this->assertSame(1, ManticoreDb::table($this->table)->count());
+
+        try {
+            ManticoreDb::transaction(function ($connection) {
+                $connection->table($this->table)->insert(['id' => 2, 'title' => 'gone']);
+
+                throw new \RuntimeException('nope');
+            });
+        }
+        catch (\RuntimeException $e) {
+            // the exception of the callback is rethrown
+        }
+
+        $this->assertSame(1, ManticoreDb::table($this->table)->count());
+        $this->assertSame(0, ManticoreDb::connection()->transactionLevel());
+    }
+
+    public function testRawExpressionIsNotQuoted(): void
+    {
+        $this->fill();
+
+        $this->assertSame(2, ManticoreDb::table($this->table)->where('qty', 'IN', ManticoreDb::raw('(1,2)'))->count());
+    }
+
+    /**
+     * Manticore takes no expression as a written value, and casting one to a number would
+     * write something else entirely
+     */
+    public function testRawExpressionCannotBeWritten(): void
+    {
+        $this->fill(1);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('cannot be written as a value');
+
+        ManticoreDb::table($this->table)->where('id', 1)->update(['qty' => ManticoreDb::raw('qty + 1')]);
+    }
+
     public function testWhereHelpersFilterTheRows(): void
     {
         $this->fill();

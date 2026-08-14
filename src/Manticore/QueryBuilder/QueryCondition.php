@@ -119,6 +119,11 @@ class QueryCondition
         }
 
         if ($op === 'IN' || $op === 'NOT IN') {
+            // a raw expression brings its own brackets, e.g. IN(1,2) written by hand
+            if ($value instanceof Expression) {
+                return new self($bool, $field, $op, (string)$value);
+            }
+
             return new self($bool, $field, $op, '(' . implode(',', (array)$arg) . ')');
         }
         if ($op === 'BETWEEN' || $op === 'NOT BETWEEN') {

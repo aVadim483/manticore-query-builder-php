@@ -137,6 +137,80 @@ class Builder
     }
 
     /**
+     * Run an SQL statement and tell whether the server accepted it
+     *
+     * @param string $sql
+     *
+     * @return bool
+     */
+    public static function statement(string $sql): bool
+    {
+        return self::connection()->statement($sql);
+    }
+
+    /**
+     * Run an SQL statement and answer with its rows
+     *
+     * @param string $sql
+     * @param array|null $bindings
+     *
+     * @return array
+     */
+    public static function select(string $sql, ?array $bindings = []): array
+    {
+        return self::connection()->select($sql, $bindings);
+    }
+
+    /**
+     * Run the callback inside a transaction, see Connection::transaction()
+     *
+     * @param callable $callback
+     * @param int|null $attempts
+     *
+     * @return mixed
+     */
+    public static function transaction(callable $callback, ?int $attempts = 1)
+    {
+        return self::connection()->transaction($callback, $attempts);
+    }
+
+    /**
+     * @return bool
+     */
+    public static function beginTransaction(): bool
+    {
+        return self::connection()->beginTransaction();
+    }
+
+    /**
+     * @return bool
+     */
+    public static function commit(): bool
+    {
+        return self::connection()->commit();
+    }
+
+    /**
+     * @return bool
+     */
+    public static function rollBack(): bool
+    {
+        return self::connection()->rollBack();
+    }
+
+    /**
+     * A piece of SQL to be used where a value is expected, see Query::raw()
+     *
+     * @param string $value
+     *
+     * @return Expression
+     */
+    public static function raw(string $value): Expression
+    {
+        return Query::raw($value);
+    }
+
+    /**
      * Make a piece of text a literal of a full-text query, see Query::escapeMatch()
      *
      * @param string $text

@@ -691,6 +691,11 @@ class Parser
      */
     public static function formatScalar($value, ?string $type = null): string
     {
+        if ($value instanceof Expression) {
+            // Manticore takes no expressions in INSERT/UPDATE, so one here is a mistake worth
+            // saying out loud rather than casting to a number and writing something else
+            throw new \InvalidArgumentException('A raw expression cannot be written as a value: Manticore takes no expressions in INSERT and UPDATE');
+        }
         if ($type === null) {
             if ($value === null) {
                 return 'NULL';

@@ -76,3 +76,42 @@ of the previous class.
 
 Note that the schema cache and the last `ResultSet` of a connection keep working with a subclassed
 query: `Connection::query()` hands both over to whatever class it builds.
+
+## Statements and transactions
+
+```php
+// run a statement, true when the server accepted it
+ManticoreDb::statement('FLUSH RAMCHUNK products');
+
+// run a statement and take its rows
+$rows = ManticoreDb::select('SELECT id, title FROM products WHERE MATCH(:q)', [':q' => 'galaxy']);
+
+// a transaction - Manticore serves BEGIN / COMMIT / ROLLBACK on real-time tables
+ManticoreDb::transaction(function ($connection) {
+    $connection->table('products')->insert($row);
+    $connection->table('log')->insert($record);
+});
+
+// ... or by hand
+ManticoreDb::beginTransaction();
+ManticoreDb::table('products')->insert($row);
+ManticoreDb::commit();   // or rollBack()
+```
+
+The callback of `transaction()` receives the connection, and whatever it returns becomes the
+result of the call. An exception rolls the transaction back and is rethrown; a second argument
+sets how many times to try. There are no savepoints in Manticore, so a nested `transaction()`
+only counts a level deeper - the outermost commit is the one that writes.
+
+## Raw expressions
+
+`raw()` marks a piece of SQL to be used where a value is expected, without quoting or escaping:
+
+```php
+$res = ManticoreDb::table('products')->where('qty', 'IN', ManticoreDb::raw('(1,2,3)'))->get();
+```
+
+Note that Manticore takes no expressions in `INSERT` and `UPDATE`, and none in `WHERE` either -
+`WHERE price > qty * 2` is a syntax error, so a raw expression cannot make one column compare to
+another. Writing one as a value throws an `InvalidArgumentException` rather than casting it to a
+number and writing something else.
