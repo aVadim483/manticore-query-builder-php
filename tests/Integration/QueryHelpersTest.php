@@ -3,6 +3,7 @@
 namespace avadim\Manticore\Tests\Integration;
 
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+use avadim\Manticore\QueryBuilder\QueryErrorException;
 use avadim\Manticore\Tests\Support\IntegrationTestCase;
 
 /**
@@ -309,6 +310,50 @@ final class QueryHelpersTest extends IntegrationTestCase
         $result = ManticoreDb::connection()->sql('SELECT 1')->exec();
 
         $this->assertTrue($result->success(), (string)$result->error());
+    }
+
+    public function testWhereRegexMatchesAStringAttribute(): void
+    {
+        $this->fill();
+
+        $table = ManticoreDb::table($this->table);
+        $this->assertSame(2, $table->clone()->whereRegex('manufacturer', '^acme$')->count());
+        $this->assertSame(1, $table->clone()->whereNotRegex('manufacturer', '^acme$')->count());
+    }
+
+    /**
+     * Unlike the LIKE of MySQL, REGEX is case sensitive - the inline flag is how the other
+     * behaviour is asked for
+     */
+    public function testWhereRegexIsCaseSensitiveUnlessTold(): void
+    {
+        ManticoreDb::table($this->table)->insert(['id' => 10, 'manufacturer' => 'ACME', 'title' => 'shouty']);
+
+        $table = ManticoreDb::table($this->table);
+        $this->assertSame(0, $table->clone()->whereRegex('manufacturer', '^acme$')->count());
+        $this->assertSame(1, $table->clone()->whereRegex('manufacturer', '(?i)^acme$')->count());
+    }
+
+    /**
+     * REGEX reaches attributes only, and a rejected read throws rather than answering with
+     * nothing - which is what tells the caller to use match() instead
+     */
+    public function testWhereRegexOverAFullTextFieldThrows(): void
+    {
+        $this->fill(1);
+
+        $this->expectException(QueryErrorException::class);
+
+        ManticoreDb::table($this->table)->whereRegex('title', 'row')->get();
+    }
+
+    public function testWhereMatchIsTheFullTextSearch(): void
+    {
+        $this->fill();
+
+        $rows = ManticoreDb::table($this->table)->whereMatch('number')->get();
+
+        $this->assertCount(3, $rows);
     }
 
     public function testWhereHelpersFilterTheRows(): void

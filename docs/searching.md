@@ -156,6 +156,38 @@ $res = ManticoreDb::table('?products')->where(['color' => 'red', 'price' => 10])
 // the same with explicit operators
 $res = ManticoreDb::table('?products')->where([['price', '>', 10], ['color', 'red']])->get();
 ```
+### Pattern matching: whereRegex() and whereMatch()
+
+There is no `whereLike()`, because Manticore takes no `LIKE` in `WHERE` at all. What it takes is
+`REGEX()` over string attributes, and full-text search over text fields — two different
+mechanisms, so the builder names them apart instead of hiding both behind a familiar name:
+
+```php
+// a string attribute, matched by a regular expression
+$res = ManticoreDb::table('?products')->whereRegex('manufacturer', '^acme')->get();
+$res = ManticoreDb::table('?products')->orWhereRegex('manufacturer', '^other')->get();
+$res = ManticoreDb::table('?products')->whereNotRegex('manufacturer', '^acme')->get();
+
+// a text field, searched through the full-text index - an alias of match()
+$res = ManticoreDb::table('?products')->whereMatch('galaxy')->get();
+```
+
+Three things to keep in mind about `whereRegex()`:
+
+* it works on **string attributes only**. A full-text field is not an attribute, and a `REGEX`
+  over one is rejected by the server — the read then throws a `QueryErrorException` telling so;
+* it is **case sensitive**, unlike the `LIKE` of MySQL. Prefix the pattern with the inline flag
+  `(?i)` to match either case: `whereRegex('manufacturer', '(?i)^acme')`;
+* it goes **through no index** — every value of the attribute is matched, which is a full scan.
+
+The pattern is not anchored: it matches anywhere in the value unless `^` and `$` say otherwise.
+It is escaped as a value, so a quote or a backslash in it is safe to pass through.
+
+`whereMatch()` is `match()` under the naming of the `where*()` family. There is deliberately no
+`orWhereMatch()` or `whereNotMatch()`: `MATCH` is a clause of its own rather than a condition of
+`WHERE`, and Manticore takes one per query — alternatives and negation belong inside the
+expression itself (`match('acme|corp')`, `match('acme -corp')`).
+
 The helpers of the Laravel query builder are there as well:
 ```php
 // SELECT * FROM ?products WHERE NOT((color='red'))

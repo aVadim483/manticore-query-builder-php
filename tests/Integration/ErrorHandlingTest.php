@@ -3,6 +3,7 @@
 namespace avadim\Manticore\Tests\Integration;
 
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+use avadim\Manticore\QueryBuilder\QueryErrorException;
 use avadim\Manticore\Tests\Support\IntegrationTestCase;
 
 /**
@@ -50,14 +51,48 @@ final class ErrorHandlingTest extends IntegrationTestCase
         $this->assertSame([], $result->facets());
     }
 
-    public function testGetOnFailedQueryReturnsNull(): void
+    /**
+     * A read that the server rejected throws: answering with null or zero would be
+     * indistinguishable from an empty table
+     */
+    public function testGetOnFailedQueryThrows(): void
     {
-        $this->assertNull(ManticoreDb::table($this->tableName('missing'))->get());
+        $this->expectException(QueryErrorException::class);
+
+        ManticoreDb::table($this->tableName('missing'))->get();
     }
 
-    public function testCountOnFailedQueryReturnsZero(): void
+    public function testCountOnFailedQueryThrows(): void
     {
-        $this->assertSame(0, ManticoreDb::table($this->tableName('missing'))->count());
+        $this->expectException(QueryErrorException::class);
+
+        ManticoreDb::table($this->tableName('missing'))->count();
+    }
+
+    public function testTheExceptionCarriesTheServerMessageAndTheStatement(): void
+    {
+        $table = $this->tableName('missing');
+
+        try {
+            ManticoreDb::table($table)->first();
+            $this->fail('A rejected read must throw');
+        }
+        catch (QueryErrorException $e) {
+            $this->assertStringContainsString($table, (string)$e->sql());
+            $this->assertNotSame('', $e->getMessage());
+        }
+    }
+
+    /**
+     * exec() and search() keep answering with the ResultSet, so the error can be read out
+     * instead of caught
+     */
+    public function testExecStillAnswersWithTheResultSet(): void
+    {
+        $result = ManticoreDb::table($this->tableName('missing'))->exec();
+
+        $this->assertFalse($result->success());
+        $this->assertNotEmpty($result->error());
     }
 
     /**

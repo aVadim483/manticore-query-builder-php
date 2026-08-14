@@ -136,6 +136,70 @@ final class QueryHelpersSqlTest extends UnitTestCase
         );
     }
 
+    public function testWhereRegexBuildsTheRegexCall(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE (REGEX(manufacturer, '(?i)^acme'))",
+            $this->query()->whereRegex('manufacturer', '(?i)^acme')->toSql()
+        );
+    }
+
+    public function testOrWhereRegexAndWhereNotRegex(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE (price>10)OR(REGEX(manufacturer, '^acme'))",
+            $this->query()->where('price', '>', 10)->orWhereRegex('manufacturer', '^acme')->toSql()
+        );
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE NOT((REGEX(manufacturer, '^acme')))",
+            $this->query()->whereNotRegex('manufacturer', '^acme')->toSql()
+        );
+    }
+
+    /**
+     * The pattern is a value, so a quote in it must not end the string literal - and the
+     * backslashes of the regex must survive the escaping
+     */
+    public function testWhereRegexEscapesThePattern(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE (REGEX(manufacturer, 'o\'brien'))",
+            $this->query()->whereRegex('manufacturer', "o'brien")->toSql()
+        );
+        // the backslash is doubled in the literal and the server unescapes it back, so the
+        // pattern still means "a literal dot"
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE (REGEX(manufacturer, \'^x\\\\.y$\'))',
+            $this->query()->whereRegex('manufacturer', '^x\.y$')->toSql()
+        );
+    }
+
+    public function testWhereRegexWorksInsideAGroup(): void
+    {
+        $sql = $this->query()
+            ->where(static function ($condition) {
+                $condition->whereRegex('manufacturer', '^acme')->orWhereRegex('manufacturer', '^other');
+            })
+            ->toSql();
+
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE ((REGEX(manufacturer, '^acme'))OR(REGEX(manufacturer, '^other')))",
+            $sql
+        );
+    }
+
+    public function testWhereMatchIsAnAliasOfMatch(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE MATCH('galaxy')",
+            $this->query()->whereMatch('galaxy')->toSql()
+        );
+        $this->assertSqlSame(
+            $this->query()->match('galaxy')->toSql(),
+            $this->query()->whereMatch('galaxy')->toSql()
+        );
+    }
+
     public function testHavingRaw(): void
     {
         $this->assertSqlSame(

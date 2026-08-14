@@ -586,6 +586,23 @@ class Query
      *
      * @return $this
      */
+    /**
+     * Alias of match(), for the where*() naming.
+     *
+     * There is deliberately no orWhereMatch() or whereNotMatch(): MATCH is not a condition of
+     * WHERE but a clause of its own, and Manticore takes one per query. Alternatives and
+     * negation belong inside the expression itself - match('acme|corp'), match('acme -corp').
+     * A second call replaces the expression of the first one.
+     *
+     * @param string $match
+     *
+     * @return $this
+     */
+    public function whereMatch(string $match): Query
+    {
+        return $this->match($match);
+    }
+
     public function withScore(): Query
     {
         $this->score = true;
@@ -1577,6 +1594,28 @@ class Query
     }
 
     /**
+     * Run the query for its rows, throwing when the server rejected it.
+     *
+     * The methods that answer with data - get(), first(), the aggregates, the walks - go
+     * through here: a null in place of the rows would look like an empty result, so a rejected
+     * statement has to say so. exec() and search() keep answering with the ResultSet, error
+     * and all.
+     *
+     * @return ResultSet
+     * @throws QueryErrorException
+     */
+    protected function _execRead(): ResultSet
+    {
+        $result = $this->exec();
+
+        if (!$result->success()) {
+            throw new QueryErrorException((string)$result->error(), $result->sqlQuery());
+        }
+
+        return $result;
+    }
+
+    /**
      * Allows to get the query transformation tree of a query without running it. Useful for testing queries.
      *
      * Explains the full-text expression given to match(), i.e.
@@ -2315,7 +2354,7 @@ class Query
             $this->selectColumns(null);
         }
 
-        return $this->exec()->result();
+        return $this->_execRead()->result();
     }
 
     /**
@@ -2339,7 +2378,7 @@ class Query
         $function = strtoupper($function);
         // deliberately not get(): a subclass is free to answer that one with anything
         $this->selectColumns($function . '(' . ($column ?: '*') . ') as _aggregate');
-        $result = $this->exec()->result();
+        $result = $this->_execRead()->result();
 
         if ($result && ($row = reset($result))) {
             return $row['_aggregate'] ?? null;
@@ -2410,7 +2449,7 @@ class Query
     public function value(string $column)
     {
         $this->selectColumns($column);
-        $row = $this->limit(1)->exec()->first();
+        $row = $this->limit(1)->_execRead()->first();
 
         return is_array($row) ? ($row[$column] ?? null) : null;
     }
@@ -2438,7 +2477,7 @@ class Query
      */
     public function first()
     {
-        return $this->limit(1)->exec()->first();
+        return $this->limit(1)->_execRead()->first();
     }
 
     /**
@@ -2483,7 +2522,7 @@ class Query
         $page = 1;
 
         do {
-            $rows = $this->clone()->forPage($page, $count)->exec()->result();
+            $rows = $this->clone()->forPage($page, $count)->_execRead()->result();
             $rows = is_array($rows) ? $rows : [];
             if (!$rows) {
                 break;
@@ -2522,7 +2561,7 @@ class Query
             if ($lastId !== null) {
                 $query->where($column, '>', $lastId);
             }
-            $rows = $query->exec()->result();
+            $rows = $query->_execRead()->result();
             $rows = is_array($rows) ? $rows : [];
             if (!$rows) {
                 return true;
@@ -2578,7 +2617,7 @@ class Query
         $page = 1;
 
         do {
-            $rows = $this->clone()->forPage($page, $count)->exec()->result();
+            $rows = $this->clone()->forPage($page, $count)->_execRead()->result();
             $rows = is_array($rows) ? $rows : [];
             foreach ($rows as $key => $row) {
                 yield $key => $row;
@@ -2608,7 +2647,7 @@ class Query
      */
     public function sole()
     {
-        $rows = $this->limit(2)->exec()->result();
+        $rows = $this->limit(2)->_execRead()->result();
         $count = is_array($rows) ? count($rows) : 0;
 
         if ($count === 0) {
@@ -2730,7 +2769,7 @@ class Query
         // deliberately not get(): a subclass is free to answer that one with something that is
         // not an array at all, while this method is defined to return one
         $this->selectColumns($key === null ? $column : [$column, $key]);
-        $result = $this->exec()->result();
+        $result = $this->_execRead()->result();
 
         if ($result) {
             return array_column($result, $column, $key);
@@ -2904,7 +2943,7 @@ class Query
                 $conditions[$column] = $row[$column];
             }
 
-            $existing = $this->clone()->where($conditions)->exec()->first();
+            $existing = $this->clone()->where($conditions)->_execRead()->first();
             if (is_array($existing) && isset($existing['id'])) {
                 $values = $update === null ? $row : array_intersect_key($row, array_flip($update));
                 $merged = array_merge($existing, $values);
@@ -2935,7 +2974,7 @@ class Query
      */
     public function increment(string $column, $amount = 1, ?array $extra = []): int
     {
-        $rows = $this->clone()->select(['id', $column])->exec()->result();
+        $rows = $this->clone()->select(['id', $column])->_execRead()->result();
         $affected = 0;
 
         foreach (is_array($rows) ? $rows : [] as $row) {

@@ -236,6 +236,24 @@ class Connection
     }
 
     /**
+     * A statement asked for its data: a rejected one throws rather than answering with nothing.
+     * Same rule as in Query - reads throw, the ResultSet is there for whoever wants it.
+     *
+     * @param ResultSet $result
+     *
+     * @return ResultSet
+     * @throws QueryErrorException
+     */
+    protected function read(ResultSet $result): ResultSet
+    {
+        if (!$result->success()) {
+            throw new QueryErrorException((string)$result->error(), $result->sqlQuery());
+        }
+
+        return $result;
+    }
+
+    /**
      * SHOW TABLES
      *
      * @param string|null $pattern
@@ -244,7 +262,7 @@ class Connection
      */
     public function showTables(?string $pattern = null): array
     {
-        return $this->query()->showTables($pattern)->result();
+        return $this->read($this->query()->showTables($pattern))->result();
     }
 
     /**
@@ -256,7 +274,7 @@ class Connection
      */
     public function tableStatus(string $tableName): array
     {
-        return $this->query()->table($tableName)->status($tableName)->variables();
+        return $this->read($this->query()->table($tableName)->status($tableName))->variables();
     }
 
     /**
@@ -268,7 +286,7 @@ class Connection
      */
     public function tableSettings(string $tableName): array
     {
-        return $this->query()->table($tableName)->settings($tableName)->variables();
+        return $this->read($this->query()->table($tableName)->settings($tableName))->variables();
     }
 
     /**
@@ -279,7 +297,7 @@ class Connection
     public function tableDescribe(string $tableName): array
     {
         $result = [];
-        foreach ($this->query()->table($tableName)->describe()->result() as $col) {
+        foreach ($this->read($this->query()->table($tableName)->describe())->result() as $col) {
             $result[$col['Field']] = $col;
         }
 
@@ -293,7 +311,7 @@ class Connection
      */
     public function showVariables(?string $pattern = null): array
     {
-        return $this->query()->showVariables($pattern)->result();
+        return $this->read($this->query()->showVariables($pattern))->result();
     }
 
     /**
@@ -303,7 +321,7 @@ class Connection
      */
     public function showCreate(string $tableName): string
     {
-        $result = $this->query()->table($tableName)->showCreate()->result();
+        $result = $this->read($this->query()->table($tableName)->showCreate())->result();
 
         return $result['Create Table'] ?? '';
     }

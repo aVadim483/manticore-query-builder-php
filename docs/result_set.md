@@ -96,3 +96,34 @@ Returns facets
 
 ### variable($name): mixed
 Returns value of variable
+
+## Errors
+
+A statement asked for its **rows** throws when the server rejects it: `get()`, `first()`,
+`find()`, `value()`, `pluck()`, `sole()`, `count()`, the aggregates and the walks all raise
+`avadim\Manticore\QueryBuilder\QueryErrorException`, which carries the message of the server
+and the statement itself through `sql()`. Answering with `null` or `0` would be
+indistinguishable from an empty table.
+
+```php
+try {
+    $rows = ManticoreDb::table('?products')->whereRegex('title', 'galaxy')->get();
+}
+catch (vadim\Manticore\QueryBuilder\QueryErrorException $e) {
+    $e->getMessage();   // what the server said
+    $e->sql();          // the statement it rejected
+}
+```
+
+`exec()` and `search()` keep answering with the `ResultSet` instead - the error is read out of
+it rather than caught:
+
+```php
+$result = ManticoreDb::table('?products')->whereRegex('title', 'galaxy')->exec();
+if (!$result->success()) {
+    $error = $result->error();
+}
+```
+
+Writes follow the same split: `insert()`, `update()`, `delete()` and `replace()` answer with a
+scalar, and the whole answer of the last statement is available through `lastResultSet()`.

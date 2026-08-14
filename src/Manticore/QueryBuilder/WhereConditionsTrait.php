@@ -216,6 +216,64 @@ trait WhereConditionsTrait
     }
 
     /**
+     * REGEX(<column>, '<pattern>') - the substring and pattern matching of Manticore.
+     *
+     * This is what LIKE would have been: the server takes no LIKE in WHERE at all. Two things
+     * to know about it:
+     *
+     *   - the pattern is matched against string attributes only. A full-text field is not an
+     *     attribute, and the server answers a REGEX over one with a syntax error - use match()
+     *     for those;
+     *   - matching is case sensitive, unlike the LIKE of MySQL. Prefix the pattern with the
+     *     inline flag "(?i)" to make it insensitive.
+     *
+     * The pattern is not anchored, so it matches anywhere in the value unless "^" and "$" say
+     * otherwise. It goes through no index, i.e. it is a full scan of the attribute.
+     *
+     * @param string $column
+     * @param string $pattern
+     *
+     * @return $this
+     */
+    public function whereRegex(string $column, string $pattern): self
+    {
+        return $this->andWhere(self::regexExpression($column, $pattern));
+    }
+
+    /**
+     * @param string $column
+     * @param string $pattern
+     *
+     * @return $this
+     */
+    public function orWhereRegex(string $column, string $pattern): self
+    {
+        return $this->orWhere(self::regexExpression($column, $pattern));
+    }
+
+    /**
+     * @param string $column
+     * @param string $pattern
+     *
+     * @return $this
+     */
+    public function whereNotRegex(string $column, string $pattern): self
+    {
+        return $this->whereNot(self::regexExpression($column, $pattern));
+    }
+
+    /**
+     * @param string $column
+     * @param string $pattern
+     *
+     * @return string
+     */
+    private static function regexExpression(string $column, string $pattern): string
+    {
+        return 'REGEX(' . $column . ', ' . Query::quoteParam($pattern) . ')';
+    }
+
+    /**
      * @param string $expression
      *
      * @return $this
