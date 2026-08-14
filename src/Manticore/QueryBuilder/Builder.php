@@ -329,4 +329,21 @@ class Builder
     {
         return self::connection()->showCreate($tableName);
     }
+
+    /**
+     * The ResultSet of the last statement of the given connection.
+     *
+     * The way to get at the error text after a scalar-answering write, i.e.
+     *      if (!ManticoreDb::table('?products')->insert($row)) {
+     *          $error = ManticoreDb::lastResultSet()->error();
+     *      }
+     *
+     * @param string|null $connectionName
+     *
+     * @return ResultSet|null
+     */
+    public static function lastResultSet(?string $connectionName = null): ?ResultSet
+    {
+        return self::connection($connectionName)->lastResultSet();
+    }
 }

@@ -85,9 +85,10 @@ final class ErrorHandlingTest extends IntegrationTestCase
     public function writeCommandProvider(): array
     {
         return [
-            'insert'  => ['insert', [['title' => 'x']]],
-            'update'  => ['update', [['title' => 'x'], 1]],
-            'replace' => ['replace', [['title' => 'x'], 1]],
+            'insert'  => ['insertResultSet', [['title' => 'x']]],
+            'update'  => ['updateResultSet', [['title' => 'x'], 1]],
+            'delete'  => ['deleteResultSet', [1]],
+            'replace' => ['replaceResultSet', [['title' => 'x'], 1]],
         ];
     }
 

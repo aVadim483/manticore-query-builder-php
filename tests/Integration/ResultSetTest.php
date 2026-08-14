@@ -130,10 +130,18 @@ final class ResultSetTest extends IntegrationTestCase
 
     public function testResultOfInsertIsId(): void
     {
-        $result = ManticoreDb::table($this->table)->insert(['title' => 'one more']);
+        $result = ManticoreDb::table($this->table)->insertResultSet(['title' => 'one more']);
 
         $this->assertSame('inserted', $result->status());
         $this->assertIsInt($result->result());
+    }
+
+    public function testResultOfDeleteIsTheNumberOfDeletedRows(): void
+    {
+        $result = ManticoreDb::table($this->table)->where('price', '<=', 3)->deleteResultSet();
+
+        $this->assertSame('deleted', $result->status());
+        $this->assertSame(3, $result->result());
     }
 
     public function testResultOfDropIsBoolean(): void

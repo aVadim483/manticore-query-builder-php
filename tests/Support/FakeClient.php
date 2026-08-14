@@ -17,6 +17,12 @@ class FakeClient
     /** @var string[] every query this client was asked to run */
     public array $queries = [];
 
+    /** @var int what rowCount() would give, i.e. the affected rows of UPDATE/DELETE */
+    public int $affectedRows = 0;
+
+    /** @var mixed what LAST_INSERT_ID() would give: an int, or a list of them for a set of rows */
+    public $insertedId = 1;
+
     /**
      * @param array<string, string>|null $columnTypes
      */
@@ -44,7 +50,7 @@ class FakeClient
             return ['data' => $data, 'count' => count($data)];
         }
 
-        return ['data' => [], 'count' => 0];
+        return ['data' => [], 'count' => $this->affectedRows];
     }
 
     /**
@@ -70,7 +76,7 @@ class FakeClient
     {
         $this->queries[] = $query;
 
-        return ['data' => 1];
+        return ['data' => $this->insertedId];
     }
 
     /**

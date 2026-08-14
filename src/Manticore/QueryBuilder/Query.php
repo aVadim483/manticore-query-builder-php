@@ -32,6 +32,9 @@ class Query
     private Parser $parser;
     private array $indexPool = [];
 
+    /** @var array one-element slot holding the last ResultSet, see setResultSlot() */
+    private array $resultSlot = [];
+
     private SchemaTable $schema;
 
     private ?string $sql = null;
@@ -332,7 +335,10 @@ class Query
         $context['params'] = $this->params;
         $time = microtime(true);
         try {
-            if ($parsedSql['command'] === 'INSERT') {
+            // REPLACE goes the INSERT way on purpose: the server counts it as an insert for
+            // LAST_INSERT_ID(), so the id of the written row is there to be picked up - both
+            // the generated one and the explicit one, and a list of them for a set of rows
+            if ($parsedSql['command'] === 'INSERT' || $parsedSql['command'] === 'REPLACE') {
                 $response = $this->client->insert($parsedSql['query'], $this->params);
             }
             elseif ($parsedSql['command'] === 'SELECT') {
@@ -381,6 +387,13 @@ class Query
                     'type' => 'id',
                     'data' => $response['data'],
                     'status' => 'inserted',
+                ];
+            }
+            elseif ($parsedSql['command'] === 'REPLACE') {
+                $result['result'] = [
+                    'type' => 'id',
+                    'data' => $response['data'],
+                    'status' => 'replaced',
                 ];
             }
             elseif ($parsedSql['command'] === 'SELECT') {
@@ -433,6 +446,16 @@ class Query
                     'status' => 'updated',
                 ];
             }
+            elseif ($parsedSql['command'] === 'DELETE') {
+                // the server answers with no rowset at all, so without this branch DELETE would
+                // fall through to the generic "true" below and the number of deleted rows -
+                // the only thing DELETE has to say - would be dropped on the floor
+                $result['result'] = [
+                    'type' => 'id',
+                    'data' => $response['count'] ?? 0,
+                    'status' => 'deleted',
+                ];
+            }
             elseif ($parsedSql['command'] === 'SHOW CREATE TABLE') {
                 $result['result'] = [
                     'type' => 'array',
@@ -467,7 +490,7 @@ class Query
         }
 
         $result['total_time'] = microtime(true) - $time;
-        $resultSet = new ResultSet($result, $status);
+        $resultSet = $this->_resultSet($result, $status);
         $this->log('debug', 'Manticore Result:', $result);
 
         return $resultSet;
@@ -1386,19 +1409,41 @@ class Query
             $result['response']['error'] = $error;
         }
 
-        return new ResultSet($result);
+        return $this->_resultSet($result);
     }
 
     /**
+     * DELETE, answering with the full ResultSet
+     *
+     * @param int|null $id
+     *
      * @return ResultSet
      */
-    public function delete(): ResultSet
+    public function deleteResultSet(?int $id = null): ResultSet
     {
         $this->command = 'DELETE';
+        if ($id) {
+            $this->where('id', $id);
+        }
 
         $request = $this->parse();
 
         return $this->_execQuery($request, 'deleted');
+    }
+
+    /**
+     * DELETE, answering with the number of deleted rows the way Laravel does
+     *
+     * A failed statement gives 0 as well, and 0 alone does not tell "nothing matched" from
+     * "the statement did not run" - the reason is in deleteResultSet() or lastResultSet().
+     *
+     * @param int|null $id
+     *
+     * @return int
+     */
+    public function delete(?int $id = null): int
+    {
+        return (int)$this->deleteResultSet($id)->result();
     }
 
     /**
@@ -1540,7 +1585,7 @@ class Query
         }
         $this->log('debug', 'Manticore Result:', $result);
 
-        return new ResultSet($result, $status);
+        return $this->_resultSet($result, $status);
     }
 
     /**
@@ -1874,7 +1919,7 @@ class Query
             $result['response']['error'] = $error;
         }
 
-        return new ResultSet($result);
+        return $this->_resultSet($result);
     }
 
     public function showCreate(): ResultSet
@@ -1894,7 +1939,7 @@ class Query
             $result['response']['error'] = $error;
         }
 
-        return new ResultSet($result);
+        return $this->_resultSet($result);
     }
 
     /**
@@ -1914,6 +1959,52 @@ class Query
         $this->indexPool = &$pool;
 
         return $this;
+    }
+
+    /**
+     * Share the "last result" slot of the connection.
+     *
+     * The Laravel-shaped write methods - insert(), update(), delete() - answer with a scalar,
+     * so the ResultSet they build has nowhere to go; and since Connection::query() makes a fresh
+     * Query per call, the caller of ManticoreDb::table(..)->insert(..) never gets to hold that
+     * Query either. The slot is taken by reference, exactly like setSchemaPool() does, so that
+     * Connection::lastResultSet() can hand the ResultSet back afterwards.
+     *
+     * @param array $slot
+     *
+     * @return $this
+     */
+    public function setResultSlot(array &$slot): Query
+    {
+        $this->resultSlot = &$slot;
+
+        return $this;
+    }
+
+    /**
+     * The single place where a ResultSet is born, so that the slot above never goes stale.
+     *
+     * @param array $result
+     * @param string|null $status
+     *
+     * @return ResultSet
+     */
+    protected function _resultSet(array $result, ?string $status = null): ResultSet
+    {
+        $resultSet = new ResultSet($result, $status);
+        $this->resultSlot['last'] = $resultSet;
+
+        return $resultSet;
+    }
+
+    /**
+     * The ResultSet of the last statement this query has run
+     *
+     * @return ResultSet|null
+     */
+    public function lastResultSet(): ?ResultSet
+    {
+        return $this->resultSlot['last'] ?? null;
     }
 
     /**
@@ -1975,7 +2066,7 @@ class Query
             $result['response']['error'] = $error;
         }
 
-        return new ResultSet($result);
+        return $this->_resultSet($result);
     }
 
     /**
@@ -2064,12 +2155,14 @@ class Query
     }
 
     /**
+     * INSERT, answering with the full ResultSet
+     *
      * @param array $data
      * @param int|null $id
      *
      * @return ResultSet
      */
-    public function insert(array $data, ?int $id = 0): ResultSet
+    public function insertResultSet(array $data, ?int $id = 0): ResultSet
     {
         $this->command = 'INSERT';
         $this->update = $data;
@@ -2083,12 +2176,66 @@ class Query
     }
 
     /**
+     * INSERT, answering with a success flag the way Laravel does
+     *
+     * Unlike Laravel, this library never throws on a failed statement, so false is all that is
+     * left of the error here - the text of it is in insertResultSet() or lastResultSet().
+     *
+     * @param array $data
+     * @param int|null $id
+     *
+     * @return bool
+     */
+    public function insert(array $data, ?int $id = 0): bool
+    {
+        return $this->insertResultSet($data, $id)->success();
+    }
+
+    /**
+     * INSERT, answering with the id of the inserted row the way Laravel does
+     *
+     * A set of rows makes the server answer with a list of ids, and this returns the first of
+     * them, as LAST_INSERT_ID() of MySQL would; the whole list is in insertResultSet().
+     *
+     * @param array $data
+     * @param int|null $id
+     *
+     * @return int|null null when the statement failed
+     */
+    public function insertGetId(array $data, ?int $id = 0): ?int
+    {
+        return self::firstId($this->insertResultSet($data, $id));
+    }
+
+    /**
+     * The id of a written row out of the answer to an INSERT or a REPLACE.
+     *
+     * A set of rows makes LAST_INSERT_ID() answer with a list, and the first of it is taken,
+     * as MySQL would have it.
+     *
+     * @param ResultSet $resultSet
+     *
+     * @return int|null null when the statement failed
+     */
+    private static function firstId(ResultSet $resultSet): ?int
+    {
+        if (!$resultSet->success()) {
+            return null;
+        }
+        $result = $resultSet->result();
+
+        return (int)(is_array($result) ? reset($result) : $result);
+    }
+
+    /**
+     * UPDATE, answering with the full ResultSet
+     *
      * @param array $data
      * @param int|null $id
      *
      * @return ResultSet
      */
-    public function update(array $data, ?int $id = 0): ResultSet
+    public function updateResultSet(array $data, ?int $id = 0): ResultSet
     {
         $this->command = 'UPDATE';
         $this->update = $data;
@@ -2102,12 +2249,30 @@ class Query
     }
 
     /**
+     * UPDATE, answering with the number of updated rows the way Laravel does
+     *
+     * A failed statement gives 0 as well, and 0 alone does not tell "nothing matched" from
+     * "the statement did not run" - the reason is in updateResultSet() or lastResultSet().
+     *
+     * @param array $data
+     * @param int|null $id
+     *
+     * @return int
+     */
+    public function update(array $data, ?int $id = 0): int
+    {
+        return (int)$this->updateResultSet($data, $id)->result();
+    }
+
+    /**
+     * REPLACE, answering with the full ResultSet
+     *
      * @param array $data
      * @param int|null $id
      *
      * @return ResultSet
      */
-    public function replace(array $data, ?int $id = 0): ResultSet
+    public function replaceResultSet(array $data, ?int $id = 0): ResultSet
     {
         $this->command = 'REPLACE';
 
@@ -2119,6 +2284,35 @@ class Query
         $request = $this->parse();
 
         return $this->_execQuery($request, 'replaced');
+    }
+
+    /**
+     * REPLACE, answering with a success flag
+     *
+     * The server has no REPLACE of its own in the Laravel query builder to be compatible with -
+     * this only keeps the shape of the insert() family, see insertResultSet() for why.
+     *
+     * @param array $data
+     * @param int|null $id
+     *
+     * @return bool
+     */
+    public function replace(array $data, ?int $id = 0): bool
+    {
+        return $this->replaceResultSet($data, $id)->success();
+    }
+
+    /**
+     * REPLACE, answering with the id of the written row
+     *
+     * @param array $data
+     * @param int|null $id
+     *
+     * @return int|null null when the statement failed
+     */
+    public function replaceGetId(array $data, ?int $id = 0): ?int
+    {
+        return self::firstId($this->replaceResultSet($data, $id));
     }
 
 }

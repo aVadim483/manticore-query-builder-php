@@ -12,12 +12,14 @@ class Connection
 {
     private array $config;
     private PDOClient $client;
-    private ResultSet $lastResultSet;
     private ?LoggerInterface $logger = null;
     private array $logEnabled = [];
 
     /** @var array schema cache shared by every Query of this connection, see Query::setSchemaPool() */
     private array $schemaPool = [];
+
+    /** @var array last ResultSet, filled by every Query of this connection, see Query::setResultSlot() */
+    private array $resultSlot = [];
 
 
     /**
@@ -61,6 +63,8 @@ class Connection
         $query = new Query($config, null, $this->logger);
         // one DESCRIBE per table for the whole connection, not per built query
         $query->setSchemaPool($this->schemaPool);
+        // ... and one place to pick the ResultSet up from, whatever the query returned
+        $query->setResultSlot($this->resultSlot);
 
         return $query;
     }
@@ -138,9 +142,8 @@ class Connection
         if ($ifNotExists) {
             $query->ifNotExists();
         }
-        $this->lastResultSet = $query->create($schema);
 
-        return $this->lastResultSet;
+        return $query->create($schema);
     }
 
     /**
@@ -166,9 +169,7 @@ class Connection
      */
     public function addColumn(string $tableName, string $columnName, $type, $options = null): ResultSet
     {
-        $this->lastResultSet = $this->query()->table($tableName)->addColumn($columnName, $type, $options);
-
-        return $this->lastResultSet;
+        return $this->query()->table($tableName)->addColumn($columnName, $type, $options);
     }
 
     /**
@@ -181,9 +182,7 @@ class Connection
      */
     public function dropColumn(string $tableName, $columnName): ResultSet
     {
-        $this->lastResultSet = $this->query()->table($tableName)->dropColumn($columnName);
-
-        return $this->lastResultSet;
+        return $this->query()->table($tableName)->dropColumn($columnName);
     }
 
     /**
@@ -197,9 +196,7 @@ class Connection
      */
     public function modifyColumn(string $tableName, string $columnName, string $type): ResultSet
     {
-        $this->lastResultSet = $this->query()->table($tableName)->modifyColumn($columnName, $type);
-
-        return $this->lastResultSet;
+        return $this->query()->table($tableName)->modifyColumn($columnName, $type);
     }
 
     /**
@@ -212,9 +209,7 @@ class Connection
      */
     public function rename(string $tableName, string $newName): ResultSet
     {
-        $this->lastResultSet = $this->query()->table($tableName)->rename($newName);
-
-        return $this->lastResultSet;
+        return $this->query()->table($tableName)->rename($newName);
     }
 
     /**
@@ -227,9 +222,7 @@ class Connection
      */
     public function alterSettings(string $tableName, array $settings): ResultSet
     {
-        $this->lastResultSet = $this->query()->table($tableName)->alterSettings($settings);
-
-        return $this->lastResultSet;
+        return $this->query()->table($tableName)->alterSettings($settings);
     }
 
     /**
@@ -241,9 +234,7 @@ class Connection
      */
     public function showTables(?string $pattern = null): array
     {
-        $this->lastResultSet = $this->query()->showTables($pattern);
-
-        return $this->lastResultSet->result();
+        return $this->query()->showTables($pattern)->result();
     }
 
     /**
@@ -255,9 +246,7 @@ class Connection
      */
     public function tableStatus(string $tableName): array
     {
-        $this->lastResultSet = $this->query()->table($tableName)->status($tableName);
-
-        return $this->lastResultSet->variables();
+        return $this->query()->table($tableName)->status($tableName)->variables();
     }
 
     /**
@@ -269,9 +258,7 @@ class Connection
      */
     public function tableSettings(string $tableName): array
     {
-        $this->lastResultSet = $this->query()->table($tableName)->settings($tableName);
-
-        return $this->lastResultSet->variables();
+        return $this->query()->table($tableName)->settings($tableName)->variables();
     }
 
     /**
@@ -281,9 +268,8 @@ class Connection
      */
     public function tableDescribe(string $tableName): array
     {
-        $this->lastResultSet = $this->query()->table($tableName)->describe();
         $result = [];
-        foreach ($this->lastResultSet->result() as $col) {
+        foreach ($this->query()->table($tableName)->describe()->result() as $col) {
             $result[$col['Field']] = $col;
         }
 
@@ -297,9 +283,7 @@ class Connection
      */
     public function showVariables(?string $pattern = null): array
     {
-        $this->lastResultSet = $this->query()->showVariables($pattern);
-
-        return $this->lastResultSet->result();
+        return $this->query()->showVariables($pattern)->result();
     }
 
     /**
@@ -309,8 +293,7 @@ class Connection
      */
     public function showCreate(string $tableName): string
     {
-        $this->lastResultSet = $this->query()->table($tableName)->showCreate();
-        $result = $this->lastResultSet->result();
+        $result = $this->query()->table($tableName)->showCreate()->result();
 
         return $result['Create Table'] ?? '';
     }
@@ -326,10 +309,17 @@ class Connection
     }
 
     /**
+     * The ResultSet of the last statement that went through this connection.
+     *
+     * This is what insert()/update()/delete() drop on the floor when they answer with a scalar:
+     * the error text, the warning, the executed SQL, the timing. Note that it is the last
+     * statement of the connection, service ones included - a DESCRIBE that columnTypes() asks
+     * for before a write lands here too (before the write itself, so a write is never masked).
+     *
      * @return ResultSet|null
      */
     public function lastResultSet(): ?ResultSet
     {
-        return $this->lastResultSet ?? null;
+        return $this->resultSlot['last'] ?? null;
     }
 }

@@ -79,8 +79,8 @@ $singleRow = [
     'categories' => [5, 7, 11],
     'on_sale' => true,
 ];
-$res = ManticoreDb::table('?products')->insert($singleRow);
-// $res->result() => <id> of the new record
+$id = ManticoreDb::table('?products')->insertGetId($singleRow);
+// insert() returns true/false, insertGetId() - the <id> of the new record
 
 // Insert multiple rows
 $multipleRows = [
@@ -99,8 +99,18 @@ $multipleRows = [
         // ...
     ],
 ];
-$res = ManticoreDb::table('?products')->insert($multipleRows);
+$res = ManticoreDb::table('?products')->insertResultSet($multipleRows);
 // $res->result() => array of <id> of new records
+
+// Update and delete answer with the number of affected rows
+$updated = ManticoreDb::table('?products')->where('price', '<', 100)->update(['on_sale' => true]);
+$deleted = ManticoreDb::table('?products')->where('price', '<', 1)->delete();
+
+// A failed query is not thrown - insert() gives false, update()/delete() give 0,
+// and the reason is in the ResultSet left behind
+if (!ManticoreDb::table('?products')->insert($singleRow)) {
+    $error = ManticoreDb::lastResultSet()->error();
+}
 
 // Search: get() returns rows keyed by document id, with values cast back to PHP types
 // ('info' as an array, 'categories' as int[], 'on_sale' as bool)

@@ -43,9 +43,9 @@ final class CrudTest extends IntegrationTestCase
         ], $overrides);
     }
 
-    public function testInsertReturnsGeneratedId(): void
+    public function testInsertResultSetReturnsGeneratedId(): void
     {
-        $result = ManticoreDb::table($this->table)->insert($this->row());
+        $result = ManticoreDb::table($this->table)->insertResultSet($this->row());
 
         $this->assertTrue($result->success(), (string)$result->error());
         $this->assertSame('inserted', $result->status());
@@ -53,17 +53,29 @@ final class CrudTest extends IntegrationTestCase
         $this->assertGreaterThan(0, $result->result());
     }
 
+    public function testInsertReturnsTrueOnSuccess(): void
+    {
+        $this->assertTrue(ManticoreDb::table($this->table)->insert($this->row()));
+    }
+
+    public function testInsertGetIdReturnsGeneratedId(): void
+    {
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row());
+
+        $this->assertIsInt($id);
+        $this->assertGreaterThan(0, $id);
+        $this->assertNotNull(ManticoreDb::table($this->table)->find($id));
+    }
+
     public function testInsertWithExplicitIdInData(): void
     {
-        $result = ManticoreDb::table($this->table)->insert($this->row(['id' => 500]));
-
-        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertTrue(ManticoreDb::table($this->table)->insert($this->row(['id' => 500])));
         $this->assertNotNull(ManticoreDb::table($this->table)->find(500));
     }
 
     public function testInsertMultipleRowsReturnsIdList(): void
     {
-        $result = ManticoreDb::table($this->table)->insert([
+        $result = ManticoreDb::table($this->table)->insertResultSet([
             $this->row(['title' => 'first']),
             $this->row(['title' => 'second']),
             $this->row(['title' => 'third']),
@@ -77,22 +89,37 @@ final class CrudTest extends IntegrationTestCase
         $this->assertSame(3, ManticoreDb::table($this->table)->count());
     }
 
+    public function testInsertGetIdOfMultipleRowsReturnsTheFirstId(): void
+    {
+        $ids = ManticoreDb::table($this->table)->insertResultSet([
+            $this->row(['title' => 'first']),
+            $this->row(['title' => 'second']),
+        ])->result();
+
+        // the whole list only lives in the ResultSet, the scalar wrapper answers as
+        // LAST_INSERT_ID() of MySQL would
+        $id = ManticoreDb::table($this->table)->insertGetId([
+            $this->row(['title' => 'third']),
+            $this->row(['title' => 'fourth']),
+        ]);
+
+        $this->assertIsInt($id);
+        $this->assertGreaterThan(end($ids), $id);
+        $this->assertSame('third', ManticoreDb::table($this->table)->find($id)['title']);
+    }
+
     public function testInsertWithExplicitIdArgument(): void
     {
-        $result = ManticoreDb::table($this->table)->insert($this->row(), 600);
-
-        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertTrue(ManticoreDb::table($this->table)->insert($this->row(), 600));
         $this->assertNotNull(ManticoreDb::table($this->table)->find(600));
     }
 
     public function testInsertMultipleRowsWithDifferentColumnSets(): void
     {
-        $result = ManticoreDb::table($this->table)->insert([
+        $this->assertTrue(ManticoreDb::table($this->table)->insert([
             $this->row(['title' => 'complete']),
             ['title' => 'partial'],
-        ]);
-
-        $this->assertTrue($result->success(), (string)$result->error());
+        ]));
 
         $rows = ManticoreDb::table($this->table)->orderBy('id')->get();
         $partial = end($rows);
@@ -107,7 +134,7 @@ final class CrudTest extends IntegrationTestCase
 
     public function testFindReturnsRowById(): void
     {
-        $id = ManticoreDb::table($this->table)->insert($this->row())->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row());
 
         $row = ManticoreDb::table($this->table)->find($id);
 
@@ -143,7 +170,7 @@ final class CrudTest extends IntegrationTestCase
 
     public function testGetReturnsDictionaryKeyedById(): void
     {
-        $id = ManticoreDb::table($this->table)->insert($this->row())->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row());
 
         $rows = ManticoreDb::table($this->table)->get();
 
@@ -203,7 +230,7 @@ final class CrudTest extends IntegrationTestCase
             $this->row(['title' => 'expensive', 'price' => 100.0]),
         ]);
 
-        $result = ManticoreDb::table($this->table)->where('price', '<', 50)->update(['qty' => 0]);
+        $result = ManticoreDb::table($this->table)->where('price', '<', 50)->updateResultSet(['qty' => 0]);
 
         $this->assertTrue($result->success(), (string)$result->error());
         $this->assertSame('updated', $result->status());
@@ -214,19 +241,30 @@ final class CrudTest extends IntegrationTestCase
         $this->assertSame('cheap', reset($rows)['title']);
     }
 
+    public function testUpdateReturnsNumberOfUpdatedRows(): void
+    {
+        ManticoreDb::table($this->table)->insert([
+            $this->row(['title' => 'cheap', 'price' => 10.0]),
+            $this->row(['title' => 'also cheap', 'price' => 20.0]),
+            $this->row(['title' => 'expensive', 'price' => 100.0]),
+        ]);
+
+        $affected = ManticoreDb::table($this->table)->where('price', '<', 50)->update(['qty' => 0]);
+
+        $this->assertSame(2, $affected);
+    }
+
     public function testUpdateById(): void
     {
-        $id = ManticoreDb::table($this->table)->insert($this->row())->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row());
 
-        $result = ManticoreDb::table($this->table)->update(['price' => 9.99], $id);
-
-        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertSame(1, ManticoreDb::table($this->table)->update(['price' => 9.99], $id));
         $this->assertSame(9.99, ManticoreDb::table($this->table)->find($id)['price']);
     }
 
     public function testUpdateEscapesStringValue(): void
     {
-        $id = ManticoreDb::table($this->table)->insert($this->row())->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row());
 
         ManticoreDb::table($this->table)->update(['manufacturer' => "O'Neill"], $id);
 
@@ -235,23 +273,26 @@ final class CrudTest extends IntegrationTestCase
 
     public function testUpdateOfMissingRowAffectsNothing(): void
     {
-        $result = ManticoreDb::table($this->table)->where('id', 999999)->update(['qty' => 1]);
+        $result = ManticoreDb::table($this->table)->where('id', 999999)->updateResultSet(['qty' => 1]);
 
+        // 0 of the scalar update() alone would not tell this apart from a failed statement
         $this->assertTrue($result->success(), (string)$result->error());
         $this->assertSame(0, $result->result());
+        $this->assertSame(0, ManticoreDb::table($this->table)->where('id', 999999)->update(['qty' => 1]));
     }
 
     public function testReplaceOverwritesWholeRow(): void
     {
-        $id = ManticoreDb::table($this->table)->insert($this->row())->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row());
 
-        $result = ManticoreDb::table($this->table)->replace([
+        $result = ManticoreDb::table($this->table)->replaceResultSet([
             'title' => 'replaced',
             'price' => 1.0,
         ], $id);
 
         $this->assertTrue($result->success(), (string)$result->error());
         $this->assertSame('replaced', $result->status());
+        $this->assertSame($id, $result->result(), 'REPLACE reports the id it wrote');
 
         $row = ManticoreDb::table($this->table)->find($id);
         $this->assertSame('replaced', $row['title']);
@@ -261,10 +302,22 @@ final class CrudTest extends IntegrationTestCase
 
     public function testReplaceInsertsWhenIdIsUnknown(): void
     {
-        $result = ManticoreDb::table($this->table)->replace(['title' => 'new one'], 777);
-
-        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertTrue(ManticoreDb::table($this->table)->replace(['title' => 'new one'], 777));
         $this->assertSame('new one', ManticoreDb::table($this->table)->find(777)['title']);
+    }
+
+    public function testReplaceGetIdReturnsExplicitId(): void
+    {
+        $this->assertSame(777, ManticoreDb::table($this->table)->replaceGetId(['title' => 'x'], 777));
+    }
+
+    public function testReplaceGetIdGeneratesAnIdWhenNoneWasGiven(): void
+    {
+        $id = ManticoreDb::table($this->table)->replaceGetId($this->row());
+
+        $this->assertIsInt($id);
+        $this->assertGreaterThan(0, $id);
+        $this->assertSame('Galaxy S23 Ultra', ManticoreDb::table($this->table)->find($id)['title']);
     }
 
     public function testDeleteByCondition(): void
@@ -274,19 +327,40 @@ final class CrudTest extends IntegrationTestCase
             $this->row(['price' => 100.0]),
         ]);
 
-        $result = ManticoreDb::table($this->table)->where('price', '<', 50)->delete();
+        $result = ManticoreDb::table($this->table)->where('price', '<', 50)->deleteResultSet();
 
         $this->assertTrue($result->success(), (string)$result->error());
         $this->assertSame('deleted', $result->status());
+        $this->assertSame(1, $result->result(), 'delete() returns the number of deleted rows');
         $this->assertSame(1, ManticoreDb::table($this->table)->count());
+    }
+
+    public function testDeleteReturnsNumberOfDeletedRows(): void
+    {
+        ManticoreDb::table($this->table)->insert([
+            $this->row(['price' => 10.0]),
+            $this->row(['price' => 20.0]),
+            $this->row(['price' => 100.0]),
+        ]);
+
+        $this->assertSame(2, ManticoreDb::table($this->table)->where('price', '<', 50)->delete());
+        $this->assertSame(0, ManticoreDb::table($this->table)->where('price', '<', 50)->delete());
     }
 
     public function testDeleteById(): void
     {
-        $id = ManticoreDb::table($this->table)->insert($this->row())->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row());
 
         ManticoreDb::table($this->table)->where('id', $id)->delete();
 
+        $this->assertNull(ManticoreDb::table($this->table)->find($id));
+    }
+
+    public function testDeleteByIdArgument(): void
+    {
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row());
+
+        $this->assertSame(1, ManticoreDb::table($this->table)->delete($id));
         $this->assertNull(ManticoreDb::table($this->table)->find($id));
     }
 
@@ -307,7 +381,7 @@ final class CrudTest extends IntegrationTestCase
     public function testValueWithQuotesSurvivesRoundTrip(): void
     {
         $value = "O'Neill \\ \"quoted\" %100";
-        $id = ManticoreDb::table($this->table)->insert($this->row(['manufacturer' => $value]))->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row(['manufacturer' => $value]));
 
         $this->assertSame($value, ManticoreDb::table($this->table)->find($id)['manufacturer']);
     }
@@ -315,7 +389,7 @@ final class CrudTest extends IntegrationTestCase
     public function testValueThatLooksLikeSqlIsStoredLiterally(): void
     {
         $value = "x'; DROP TABLE " . $this->table . "; --";
-        $id = ManticoreDb::table($this->table)->insert($this->row(['manufacturer' => $value]))->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row(['manufacturer' => $value]));
 
         $this->assertSame($value, ManticoreDb::table($this->table)->find($id)['manufacturer']);
         $this->assertTrue(ManticoreDb::hasTable($this->table), 'the table must still be there');
@@ -323,8 +397,46 @@ final class CrudTest extends IntegrationTestCase
 
     public function testUnicodeValueSurvivesRoundTrip(): void
     {
-        $id = ManticoreDb::table($this->table)->insert($this->row(['manufacturer' => 'Ёлка «ёж»']))->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row(['manufacturer' => 'Ёлка «ёж»']));
 
         $this->assertSame('Ёлка «ёж»', ManticoreDb::table($this->table)->find($id)['manufacturer']);
+    }
+
+    public function testScalarWritesReportFailureWithoutThrowing(): void
+    {
+        $missing = 'no_such_table_' . uniqid();
+
+        $this->assertFalse(ManticoreDb::table($missing)->insert(['title' => 'nope']));
+        $this->assertNull(ManticoreDb::table($missing)->insertGetId(['title' => 'nope']));
+        $this->assertSame(0, ManticoreDb::table($missing)->where('id', 1)->update(['title' => 'nope']));
+        $this->assertSame(0, ManticoreDb::table($missing)->where('id', 1)->delete());
+    }
+
+    public function testLastResultSetCarriesTheErrorOfAScalarWrite(): void
+    {
+        $missing = 'no_such_table_' . uniqid();
+
+        $this->assertFalse(ManticoreDb::table($missing)->insert(['title' => 'nope']));
+
+        // the scalar answer says "it failed", the ResultSet left behind says why - note that
+        // columnTypes() runs a DESCRIBE of its own before the INSERT, and it must not be the
+        // one we end up looking at
+        $result = ManticoreDb::lastResultSet();
+        $this->assertNotNull($result);
+        $this->assertSame('INSERT', $result->command());
+        $this->assertFalse($result->success());
+        $this->assertNotEmpty($result->error());
+    }
+
+    public function testLastResultSetFollowsTheSuccessfulWriteToo(): void
+    {
+        $id = ManticoreDb::table($this->table)->insertGetId($this->row());
+
+        $result = ManticoreDb::lastResultSet();
+        $this->assertSame('INSERT', $result->command());
+        $this->assertTrue($result->success(), (string)$result->error());
+        $this->assertSame('inserted', $result->status());
+        $this->assertSame($id, $result->result());
+        $this->assertStringContainsString('INSERT INTO', (string)$result->sqlQuery());
     }
 }

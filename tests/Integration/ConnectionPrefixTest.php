@@ -75,6 +75,28 @@ final class ConnectionPrefixTest extends IntegrationTestCase
         $this->assertSame('from first', $first['title']);
     }
 
+    /**
+     * lastResultSet() is where a scalar-answering write leaves its ResultSet, so it must belong
+     * to one connection and not leak into the next.
+     */
+    public function testLastResultSetIsPerConnection(): void
+    {
+        ManticoreDb::table('?products')->create($this->fields());
+        ManticoreDb::connection(self::CONNECTION_2)->table('?products')->create($this->fields());
+
+        ManticoreDb::table('?products')->insert(['title' => 'from first', 'price' => 1.0]);
+        ManticoreDb::connection(self::CONNECTION_2)->table('?products')->delete();
+
+        $first = ManticoreDb::lastResultSet();
+        $second = ManticoreDb::lastResultSet(self::CONNECTION_2);
+
+        $this->assertSame('INSERT', $first->command());
+        $this->assertStringContainsString($this->prefix1 . 'products', (string)$first->sqlQuery());
+
+        $this->assertSame('DELETE', $second->command());
+        $this->assertStringContainsString($this->prefix2 . 'products', (string)$second->sqlQuery());
+    }
+
     public function testTableOptionsPerConnection(): void
     {
         ManticoreDb::table('?products')->options([

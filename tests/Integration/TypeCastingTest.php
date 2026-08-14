@@ -38,7 +38,7 @@ final class TypeCastingTest extends IntegrationTestCase
      */
     private function roundTrip(array $row): array
     {
-        $id = ManticoreDb::table($this->table)->insert($row)->result();
+        $id = ManticoreDb::table($this->table)->insertGetId($row);
         $this->assertIsInt($id, 'insert must return an id');
 
         $result = ManticoreDb::table($this->table)->where('id', $id)->get();
@@ -171,12 +171,12 @@ final class TypeCastingTest extends IntegrationTestCase
 
     public function testUpdateKeepsTypes(): void
     {
-        $id = ManticoreDb::table($this->table)->insert([
+        $id = ManticoreDb::table($this->table)->insertGetId([
             'title' => 'x',
             'categories' => [1],
             'on_sale' => true,
             'price' => 1.0,
-        ])->result();
+        ]);
 
         ManticoreDb::table($this->table)->update([
             'categories' => [9, 8],
