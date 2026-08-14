@@ -23,7 +23,6 @@
     },
     "require": {
         "php": "^7.4|^8.1",
-        "ext-curl": "*",
         "ext-json": "*",
         "ext-mbstring": "*",
         "ext-pdo": "*",
