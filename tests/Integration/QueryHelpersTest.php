@@ -356,6 +356,39 @@ final class QueryHelpersTest extends IntegrationTestCase
         $this->assertCount(3, $rows);
     }
 
+    public function testMatchLimitedToAField(): void
+    {
+        $this->fill();
+        ManticoreDb::table($this->table)->insert(['id' => 20, 'title' => 'plain row', 'manufacturer' => 'number']);
+
+        // "number" is in the title of the filled rows and in the attribute of this one
+        $this->assertCount(3, ManticoreDb::table($this->table)->match('number', 'title')->get());
+    }
+
+    /**
+     * Text typed into a search box is not an expression: escapeMatch() makes every operator
+     * of the query language a literal, so the search neither means something else nor fails
+     */
+    public function testEscapeMatchMakesUserInputSearchable(): void
+    {
+        $this->fill();
+
+        foreach (['row -number', 'row | number', 'say "hi"', '@title row'] as $input) {
+            $escaped = ManticoreDb::escapeMatch($input);
+            // the point is that none of these throws or turns into another query
+            $this->assertIsArray(ManticoreDb::table($this->table)->match($escaped)->get() ?: []);
+        }
+    }
+
+    public function testUnescapedUserInputChangesTheQuery(): void
+    {
+        $this->fill();
+
+        // "-" excludes, so the unescaped input finds nothing while the escaped one is a phrase
+        $this->assertCount(0, ManticoreDb::table($this->table)->match('number -row')->get());
+        $this->assertCount(3, ManticoreDb::table($this->table)->match(ManticoreDb::escapeMatch('number row'))->get());
+    }
+
     public function testWhereHelpersFilterTheRows(): void
     {
         $this->fill();

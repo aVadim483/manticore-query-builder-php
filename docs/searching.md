@@ -11,6 +11,7 @@ Jump To:
 * [groupBy() and having()](#groupby---and-having--)
 * [maxMatches()](#maxmatches--)
 * [Working with JSON attributes](#working-with-json-attributes)
+* [Searching for what a user typed](#searching-for-what-a-user-typed)
 * [Aggregates and single values](#aggregates-and-single-values)
 * [Walking over a large result](#walking-over-a-large-result)
 * [Conditional building](#conditional-building)
@@ -156,6 +157,35 @@ $res = ManticoreDb::table('?products')->where(['color' => 'red', 'price' => 10])
 // the same with explicit operators
 $res = ManticoreDb::table('?products')->where([['price', '>', 10], ['color', 'red']])->get();
 ```
+### Searching for what a user typed
+
+The argument of `match()` is written in the query language of Manticore, not taken as plain
+text: `|` is an alternative, `-` excludes a word, quotes make a phrase, `@` limits the search to
+a field. Text coming from a search box has to be turned into a literal first, or it means
+something else than what was typed — and an unpaired quote makes the server reject the query:
+
+```php
+$found = ManticoreDb::table('?products')->match(ManticoreDb::escapeMatch($request->get('q')))->get();
+```
+
+| Input | `match($input)` | `match(escapeMatch($input))` |
+|---|---|---|
+| `iPhone -Pro` | excludes "Pro" | searches for the words as they were typed |
+| `iPhone\|Galaxy` | either word | both words |
+| `iPhone " 15` | rejected by the server | searches for the words |
+
+A search can be limited to certain full-text fields with the second argument, which is what the
+`@(title,description)` operator of the language does:
+
+```php
+$res = ManticoreDb::table('?products')->match('galaxy', 'title')->get();
+$res = ManticoreDb::table('?products')->match('galaxy', ['title', 'description'])->get();
+```
+
+There is no `whereFullText()` of the Laravel query builder: its `$value` is plain text, while
+here the same string is an expression, and `MATCH` is one per query rather than a condition
+among others. `whereMatch()` is the same method under the `where*()` naming.
+
 ### Pattern matching: whereRegex() and whereMatch()
 
 There is no `whereLike()`, because Manticore takes no `LIKE` in `WHERE` at all. What it takes is

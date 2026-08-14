@@ -567,16 +567,52 @@ class Query
     }
 
     /**
+     * The full-text part of the query: WHERE MATCH('...').
+     *
+     * The expression is written in the query language of Manticore, i.e. "|" is an alternative,
+     * "-" excludes and quotes make a phrase. Text a user typed has to go through escapeMatch()
+     * first, or it means something else than what was typed.
+     *
+     * The second argument limits the search to the given full-text fields, which is what the
+     * "@(title,description)" operator of the language does.
+     *
+     * A second call replaces the expression: Manticore takes one MATCH per query.
+     *
      * @param string $match
+     * @param string|array|null $columns full-text fields to search in, all of them by default
      *
      * @return $this
      */
-    public function match(string $match): Query
+    public function match(string $match, $columns = null): Query
     {
         $this->selectColumns(null);
-        $this->match = $match;
+        $this->match = $columns ? '@(' . implode(',', (array)$columns) . ') ' . $match : $match;
 
         return $this;
+    }
+
+    /**
+     * The characters the full-text query language of Manticore gives a meaning to
+     */
+    public const MATCH_SPECIAL_CHARS = '\()|-!@~"&/^$=<>';
+
+    /**
+     * Make a piece of text a literal of a full-text query.
+     *
+     * What a user typed into a search box is not an expression: a dash in "iPhone -Pro" would
+     * exclude "Pro", a pipe would turn into an OR, and an unpaired quote makes the server
+     * reject the query outright. This escapes every operator, so the text is searched for as
+     * it was written.
+     *
+     *      ManticoreDb::table('?products')->match(ManticoreDb::escapeMatch($userInput))
+     *
+     * @param string $text
+     *
+     * @return string
+     */
+    public static function escapeMatch(string $text): string
+    {
+        return addcslashes($text, self::MATCH_SPECIAL_CHARS);
     }
 
     /**
@@ -598,9 +634,9 @@ class Query
      *
      * @return $this
      */
-    public function whereMatch(string $match): Query
+    public function whereMatch(string $match, $columns = null): Query
     {
-        return $this->match($match);
+        return $this->match($match, $columns);
     }
 
     public function withScore(): Query

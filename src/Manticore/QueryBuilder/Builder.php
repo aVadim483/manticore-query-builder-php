@@ -137,6 +137,18 @@ class Builder
     }
 
     /**
+     * Make a piece of text a literal of a full-text query, see Query::escapeMatch()
+     *
+     * @param string $text
+     *
+     * @return string
+     */
+    public static function escapeMatch(string $text): string
+    {
+        return Query::escapeMatch($text);
+    }
+
+    /**
      * @param string $sql
      *
      * @return Query

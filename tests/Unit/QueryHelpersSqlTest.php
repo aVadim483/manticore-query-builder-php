@@ -2,6 +2,8 @@
 
 namespace avadim\Manticore\Tests\Unit;
 
+use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+use avadim\Manticore\QueryBuilder\Query;
 use avadim\Manticore\Tests\Support\UnitTestCase;
 
 /**
@@ -198,6 +200,36 @@ final class QueryHelpersSqlTest extends UnitTestCase
             $this->query()->match('galaxy')->toSql(),
             $this->query()->whereMatch('galaxy')->toSql()
         );
+    }
+
+    public function testMatchCanBeLimitedToFields(): void
+    {
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE MATCH('@(title) galaxy')",
+            $this->query()->match('galaxy', 'title')->toSql()
+        );
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE MATCH('@(title,info) galaxy')",
+            $this->query()->whereMatch('galaxy', ['title', 'info'])->toSql()
+        );
+    }
+
+    /**
+     * What a user typed is not an expression: every operator of the query language has to
+     * become a literal, or the search means something else than what was asked for
+     */
+    public function testEscapeMatchTurnsOperatorsIntoLiterals(): void
+    {
+        $this->assertSame('iPhone \\-Pro', Query::escapeMatch('iPhone -Pro'));
+        $this->assertSame('a \\| b', Query::escapeMatch('a | b'));
+        $this->assertSame('\\@title x', Query::escapeMatch('@title x'));
+        $this->assertSame('say \\"hi\\"', Query::escapeMatch('say "hi"'));
+        $this->assertSame('plain words 15', Query::escapeMatch('plain words 15'));
+    }
+
+    public function testEscapeMatchIsAlsoOnTheFacade(): void
+    {
+        $this->assertSame(Query::escapeMatch('iPhone -Pro'), ManticoreDb::escapeMatch('iPhone -Pro'));
     }
 
     public function testHavingRaw(): void
