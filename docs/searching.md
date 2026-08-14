@@ -12,6 +12,7 @@ Jump To:
 * [maxMatches()](#maxmatches--)
 * [Working with JSON attributes](#working-with-json-attributes)
 * [Searching for what a user typed](#searching-for-what-a-user-typed)
+* [Joining tables](#joining-tables)
 * [Conditions on dates](#conditions-on-dates)
 * [Aggregates and single values](#aggregates-and-single-values)
 * [Walking over a large result](#walking-over-a-large-result)
@@ -420,6 +421,49 @@ $res = ManticoreDb::table('?products')->match('brown | fox')->explain('dot');
 ```
 The rows of ```$res->result()``` carry the tree under the ```Variable_name``` / ```Value```
 keys, the same way ```tableStatus()``` and ```tableSettings()``` report their values.
+
+## Joining tables
+
+```php
+// SELECT * FROM test_products INNER JOIN test_groups ON test_products.gid = test_groups.id
+$res = ManticoreDb::table('?products')->join('?groups', 'products.gid', 'groups.id')->get();
+
+// the same with LEFT JOIN, and with the operator written out
+$res = ManticoreDb::table('?products')->leftJoin('?groups', 'gid', 'id')->get();
+$res = ManticoreDb::table('?products')->join('?groups', 'products.gid', '=', 'groups.id')->get();
+```
+
+A column written on its own belongs to the table it stands next to, so `join('?groups', 'gid', 'id')`
+means the same as spelling both tables out. A qualified column may name its table with the
+placeholder (`?groups.id`), with the real name (`test_groups.id`) or with the bare one
+(`groups.id`) — all three are matched against the tables of the query.
+
+The columns of the joined table come back **prefixed with its name**, which is what keeps two
+columns of the same name apart:
+
+```php
+$row = ManticoreDb::table('?products')->join('?groups', 'gid', 'id')->first();
+
+$row['title'];                 // of the products
+$row['test_groups.title'];     // of the groups
+```
+
+As in the Laravel query builder, an alias is how such a column gets a name of its own:
+
+```php
+$row = ManticoreDb::table('?products')
+    ->join('?groups', 'gid', 'id')
+    ->select(['title', '?groups.title as group_title'])
+    ->first();
+// ['title' => 'laptop', 'group_title' => 'computers']
+```
+
+Values of the joined table are cast by its own schema, so an MVA of it is an array of integers
+rather than the string the server sends.
+
+What Manticore does not do, and neither does this method: table aliases, subqueries
+(`joinSub()`), and any join condition other than equality — a different operator throws an
+`InvalidArgumentException` instead of reaching the server as a syntax error.
 
 ## Conditions on dates
 

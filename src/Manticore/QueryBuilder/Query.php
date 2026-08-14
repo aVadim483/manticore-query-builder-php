@@ -60,6 +60,9 @@ class Query
      */
     private array $exprColumns = [];
 
+    /** @var array joined tables: [['type' => 'INNER', 'table' => <real name>, 'on' => <condition>], ...] */
+    private array $joins = [];
+
     private array $group = [];
     private array $having = [];
     private array $order = [];
@@ -822,6 +825,131 @@ class Query
     }
 
     /**
+     * INNER JOIN another table.
+     *
+     *      table('?products')->join('?groups', 'products.gid', 'groups.id')
+     *      table('?products')->join('?groups', 'products.gid', '=', 'groups.id')
+     *
+     * Both sides of the condition are column names, and the table part of them goes through the
+     * same prefix resolution as table() - so "?groups.id" is written the way the table is named.
+     *
+     * Manticore joins on equality only, knows no table aliases and no subqueries, so none of
+     * that is supported here. The columns of the joined table come back prefixed with its name,
+     * e.g. "test_groups.title" - which is what keeps two columns of the same name apart, and
+     * an alias is how such a column gets a name of its own.
+     *
+     * @param string $table
+     * @param string $first
+     * @param string|null $operator
+     * @param string|null $second
+     *
+     * @return $this
+     */
+    public function join(string $table, string $first, ?string $operator = null, ?string $second = null): Query
+    {
+        return $this->_addJoin('INNER', $table, func_get_args());
+    }
+
+    /**
+     * LEFT JOIN another table, see join()
+     *
+     * @param string $table
+     * @param string $first
+     * @param string|null $operator
+     * @param string|null $second
+     *
+     * @return $this
+     */
+    public function leftJoin(string $table, string $first, ?string $operator = null, ?string $second = null): Query
+    {
+        return $this->_addJoin('LEFT', $table, func_get_args());
+    }
+
+    /**
+     * @param string $type
+     * @param string $table
+     * @param array $args the arguments of the caller
+     *
+     * @return $this
+     */
+    private function _addJoin(string $type, string $table, array $args): Query
+    {
+        $first = $args[1] ?? '';
+        if (count($args) < 4 || $args[3] === null) {
+            $operator = '=';
+            $second = $args[2] ?? '';
+        }
+        else {
+            $operator = trim((string)$args[2]);
+            $second = $args[3];
+        }
+        if ($operator !== '=') {
+            // Manticore joins on equality only: any other operator is a syntax error there
+            throw new \InvalidArgumentException('A join condition can only compare with "=", "' . $operator . '" given');
+        }
+
+        $joined = Parser::resolveTableName($table, $this->prefix, $this->forcePrefix);
+        $known = [$this->_sqlTable(), $joined];
+        foreach ($this->joins as $join) {
+            $known[] = $join['table'];
+        }
+        $this->joins[] = [
+            'type' => $type,
+            'table' => $joined,
+            'on' => $this->_joinColumn($first, $this->_sqlTable(), $known)
+                . ' ' . $operator . ' '
+                . $this->_joinColumn($second, $joined, $known),
+        ];
+
+        return $this;
+    }
+
+    /**
+     * A column of a join condition.
+     *
+     * A column written on its own belongs to the table it stands next to. A qualified one keeps
+     * its table, which may be written as the placeholder ("?groups.id"), as the real name
+     * ("test_groups.id") or as the bare one ("groups.id") - the last is matched against the
+     * tables of this query, so that a prefix does not have to be repeated by hand.
+     *
+     * @param string $column
+     * @param string $defaultTable
+     * @param array $known real names of the tables of this query
+     *
+     * @return string
+     */
+    private function _joinColumn(string $column, string $defaultTable, array $known): string
+    {
+        $column = trim($column);
+        if (strpos($column, '.') === false) {
+            return $defaultTable . '.' . $column;
+        }
+        [$table, $name] = explode('.', $column, 2);
+        $resolved = Parser::resolveTableName($table, $this->prefix, $this->forcePrefix);
+
+        foreach ($known as $real) {
+            if ($resolved === $real || $this->prefix . $table === $real || $table === $real) {
+                return $real . '.' . $name;
+            }
+        }
+
+        return $resolved . '.' . $name;
+    }
+
+    /**
+     * @return string
+     */
+    protected function _sqlJoins(): string
+    {
+        $result = '';
+        foreach ($this->joins as $join) {
+            $result .= ' ' . $join['type'] . ' JOIN ' . $join['table'] . ' ON ' . $join['on'];
+        }
+
+        return $result;
+    }
+
+    /**
      * Alias of match(), for the where*() naming.
      *
      * There is deliberately no orWhereMatch() or whereNotMatch(): MATCH is not a condition of
@@ -1277,7 +1405,7 @@ class Query
     {
         if ($this->command === 'SELECT' || $this->command === 'UPDATE' || $this->command === 'DELETE') {
             if ($this->command === 'SELECT') {
-                $sql = 'SELECT ' . $this->_sqlSelectColumns() . ' FROM ' . $this->_sqlTable();
+                $sql = 'SELECT ' . $this->_sqlSelectColumns() . ' FROM ' . $this->_sqlTable() . $this->_sqlJoins();
             }
             elseif ($this->command === 'UPDATE') {
                 $sql = 'UPDATE ' . $this->_sqlTable() . ' SET ' . $this->_sqlUpdateColumns();
@@ -2514,11 +2642,32 @@ class Query
      */
     public function columnTypes(): array
     {
-        $tableName = $this->_sqlTable();
+        $types = $this->_columnTypesOf($this->_sqlTable());
+
+        // the columns of a joined table come back under "<table>.<column>", and they are cast
+        // by the schema of that table rather than of this one
+        foreach ($this->joins as $join) {
+            foreach ($this->_columnTypesOf($join['table']) as $column => $type) {
+                $types[$join['table'] . '.' . $column] = $type;
+            }
+        }
+
+        return $types;
+    }
+
+    /**
+     * The column types of a table, asked for once per connection - see setSchemaPool()
+     *
+     * @param string $tableName
+     *
+     * @return array
+     */
+    protected function _columnTypesOf(string $tableName): array
+    {
         if (empty($this->indexPool[$tableName]['columnsType'])) {
             $types = [];
             if (empty($this->indexPool[$tableName]['describe'])) {
-                $this->indexPool[$tableName]['describe'] = $this->describe();
+                $this->indexPool[$tableName]['describe'] = $this->_describeTable($tableName);
             }
             $info = $this->indexPool[$tableName]['describe'];
             foreach ($info->result() as $row) {
@@ -2528,6 +2677,33 @@ class Query
         }
 
         return $this->indexPool[$tableName]['columnsType'];
+    }
+
+    /**
+     * DESCRIBE of any table, not only the one of table()
+     *
+     * @param string $tableName
+     *
+     * @return ResultSet
+     */
+    protected function _describeTable(string $tableName): ResultSet
+    {
+        $sql = 'DESCRIBE ' . $tableName;
+        $response = $this->_execServiceQuery($sql, $error);
+        $result = [
+            'command' => 'DESCRIBE',
+            'query' => $sql,
+            'original' => null,
+            'result' => [
+                'type' => 'array',
+                'data' => $response['data'] ?? [],
+            ]
+        ];
+        if ($error !== null) {
+            $result['response']['error'] = $error;
+        }
+
+        return new ResultSet($result);
     }
 
     /**

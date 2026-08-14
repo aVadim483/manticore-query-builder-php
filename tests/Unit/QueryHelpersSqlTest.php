@@ -232,6 +232,62 @@ final class QueryHelpersSqlTest extends UnitTestCase
         $this->assertSame(Query::escapeMatch('iPhone -Pro'), ManticoreDb::escapeMatch('iPhone -Pro'));
     }
 
+    public function testJoinBuildsTheOnCondition(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products INNER JOIN groups ON products.gid = groups.id',
+            $this->query()->join('groups', 'products.gid', 'groups.id')->toSql()
+        );
+        $this->assertSqlSame(
+            'SELECT * FROM products LEFT JOIN groups ON products.gid = groups.id',
+            $this->query()->leftJoin('groups', 'products.gid', 'groups.id')->toSql()
+        );
+    }
+
+    public function testJoinTakesTheEqualityOperatorWrittenOut(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products INNER JOIN groups ON products.gid = groups.id',
+            $this->query()->join('groups', 'products.gid', '=', 'groups.id')->toSql()
+        );
+    }
+
+    /**
+     * Manticore joins on equality only
+     */
+    public function testJoinRejectsAnotherOperator(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->query()->join('groups', 'products.gid', '>=', 'groups.id');
+    }
+
+    /**
+     * A column on its own belongs to the table it stands next to, so the condition does not
+     * have to spell both table names out
+     */
+    public function testJoinColumnsCanBeWrittenBare(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products INNER JOIN groups ON products.gid = groups.id',
+            $this->query()->join('groups', 'gid', 'id')->toSql()
+        );
+    }
+
+    public function testSeveralJoinsFollowOneAnother(): void
+    {
+        $sql = $this->query()
+            ->join('groups', 'gid', 'id')
+            ->leftJoin('brands', 'products.bid', 'brands.id')
+            ->toSql();
+
+        $this->assertSqlSame(
+            'SELECT * FROM products INNER JOIN groups ON products.gid = groups.id'
+            . ' LEFT JOIN brands ON products.bid = brands.id',
+            $sql
+        );
+    }
+
     public function testHavingRaw(): void
     {
         $this->assertSqlSame(
