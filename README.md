@@ -25,6 +25,18 @@ Features
 
 Manticore Search server documentation: https://manual.manticoresearch.com/
 
+## Related packages
+
+This is the standalone builder: PHP and PDO are all it needs, and the two packages below are built
+on it.
+
+* [`avadim/manticore-query-builder-laravel`](https://github.com/aVadim483/manticore-query-builder-laravel) —
+  the integration with Laravel and Lumen: a service provider, `config/manticore.php`, named
+  connections, a facade, and reads answering with a `Collection` of row objects.
+* [`avadim/manticore-laravel-scout`](https://github.com/aVadim483/manticore-laravel-scout) —
+  the ManticoreSearch driver for [Laravel Scout](https://laravel.com/docs/scout): full-text search
+  of Eloquent models as `Post::search('manticore')->get()`.
+
 ## Requirements
 
 * PHP 7.4 or above with the PDO extension

@@ -26,6 +26,18 @@ Query Builder для Manticore Search на PHP с синтаксисом в ст
 
 Документация сервера Manticore Search: https://manual.manticoresearch.com/
 
+## Смежные пакеты
+
+Это самостоятельный построитель запросов: ему нужны только PHP и PDO, а два пакета ниже
+построены на нём.
+
+* [`avadim/manticore-query-builder-laravel`](https://github.com/aVadim483/manticore-query-builder-laravel) —
+  интеграция с Laravel и Lumen: сервис-провайдер, `config/manticore.php`, именованные соединения,
+  фасад и чтения, отвечающие коллекцией объектов-строк.
+* [`avadim/manticore-laravel-scout`](https://github.com/aVadim483/manticore-laravel-scout) —
+  драйвер ManticoreSearch для [Laravel Scout](https://laravel.com/docs/scout): полнотекстовый
+  поиск по моделям Eloquent в виде `Post::search('manticore')->get()`.
+
 ## Требования
 
 * PHP 7.4 и выше с расширением PDO
