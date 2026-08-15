@@ -58,6 +58,51 @@ final class CallCommandsTest extends IntegrationTestCase
         $this->assertLessThanOrEqual(1, count($rows));
     }
 
+    public function testSuggestOfATableWithoutInfixesIsRefused(): void
+    {
+        $plain = $this->createTable(['title' => 'text'], 'no_infix');
+        ManticoreDb::table($plain)->insert(['id' => 1, 'title' => 'manticore search']);
+
+        $this->expectException(QueryErrorException::class);
+        $this->expectExceptionMessage('infix');
+
+        ManticoreDb::table($plain)->callSuggest('mantikore');
+    }
+
+    public function testPrefixesAreNotEnoughForSuggest(): void
+    {
+        $prefixed = $this->createTable(['title' => 'text'], 'prefix', ['min_prefix_len' => 2]);
+        ManticoreDb::table($prefixed)->insert(['id' => 1, 'title' => 'manticore search']);
+
+        $this->expectException(QueryErrorException::class);
+        $this->expectExceptionMessage('infix');
+
+        ManticoreDb::table($prefixed)->callSuggest('mantikore');
+    }
+
+    public function testAWordThatIsSpelledRightComesBackWithoutADistance(): void
+    {
+        $rows = ManticoreDb::table($this->table)->callSuggest('manticore');
+
+        $this->assertSame('manticore', $rows[0]['suggest']);
+        $this->assertSame(0, $rows[0]['distance']);
+    }
+
+    public function testAWordWithNothingCloseToItGivesAnEmptySet(): void
+    {
+        $this->assertSame([], ManticoreDb::table($this->table)->callSuggest('zzzqqq'));
+    }
+
+    public function testSuggestAnswersForTheFirstWordOfAPhraseAndQsuggestForTheLast(): void
+    {
+        // neither statement corrects a whole phrase, which is why a phrase takes a call per word
+        $first = ManticoreDb::table($this->table)->callSuggest('runing manticore');
+        $last = ManticoreDb::table($this->table)->callQsuggest('runing manticore');
+
+        $this->assertSame('running', $first[0]['suggest']);
+        $this->assertSame('manticore', $last[0]['suggest']);
+    }
+
     public function testQsuggestCorrectsTheLastWordOfAPhrase(): void
     {
         $rows = ManticoreDb::table($this->table)->callQsuggest('manticore serch');

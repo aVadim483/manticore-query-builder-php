@@ -757,8 +757,7 @@ a read does.
 
 ### callSuggest()
 
-`CALL SUGGEST` — the words of the table closest to the given one, i.e. "did you mean". The table
-has to be built with infixes, otherwise the server has nothing to compare against:
+`CALL SUGGEST` — the words of the table closest to the given one, i.e. "did you mean":
 
 ```php
 ManticoreDb::table('?products')->create([
@@ -771,6 +770,22 @@ $rows = ManticoreDb::table('?products')->callSuggest('mantikore');
 $rows = ManticoreDb::table('?products')->callSuggest('mantikore', ['limit' => 5, 'max_edits' => 2]);
 ```
 
+`distance` is how many edits away the word is, `docs` is the number of documents it appears in.
+A word that is spelled right comes back as itself with a distance of 0, and a word with nothing
+close to it gives an empty set — so "is this a typo" is a question of the distance, not of
+whether there is an answer at all. The conditions of the query are ignored: the statement works
+on the dictionary of the whole table and takes no filters.
+
+**The table has to be built with `min_infix_len`** — and with that one, not `min_prefix_len`.
+Without it the server rejects the statement rather than answering with nothing:
+
+```
+QueryErrorException: … 1064 suggests work only for keywords dictionary with infix enabled
+```
+
+The setting belongs to `CREATE TABLE`, so an existing table cannot be given infixes without
+being rebuilt.
+
 ### callQsuggest()
 
 `CALL QSUGGEST` — the same, for a phrase rather than a single word. Only its last word is
@@ -780,6 +795,26 @@ corrected, which is what a search box needs while someone is still typing:
 $rows = ManticoreDb::table('?products')->callQsuggest('manticore serch');
 // [['suggest' => 'search', 'distance' => 1, 'docs' => 2]]
 ```
+
+Neither of the two corrects a whole phrase: `SUGGEST` answers for its first word, `QSUGGEST` for
+its last. A phrase with a typo in more than one word takes a call per word, and `callKeywords()`
+splits it the way the table itself would:
+
+```php
+$words = array_column(ManticoreDb::table('?products')->callKeywords($phrase), 'tokenized');
+
+$fixed = [];
+foreach ($words as $word) {
+    $rows = ManticoreDb::table('?products')->callSuggest($word, ['limit' => 1, 'max_edits' => 2]);
+    $fixed[] = ($rows && $rows[0]['distance'] > 0) ? $rows[0]['suggest'] : $word;
+}
+
+$corrected = implode(' ', $fixed);
+```
+
+`max_edits` is what keeps a word the table has never seen from being "corrected" into a distant
+one, and `tokenized` is the token as it was written — `normalized` would be its lemma where the
+table has morphology, i.e. a word the user did not type.
 
 ### callKeywords()
 

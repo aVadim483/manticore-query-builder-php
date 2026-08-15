@@ -758,8 +758,7 @@ foreach ($res->facets(1) as $key => $facet) {
 
 ### callSuggest()
 
-`CALL SUGGEST` — слова таблицы, ближайшие к заданному, то есть «возможно, вы имели в виду».
-Таблица должна быть построена с инфиксами, иначе серверу не с чем сравнивать:
+`CALL SUGGEST` — слова таблицы, ближайшие к заданному, то есть «возможно, вы имели в виду»:
 
 ```php
 ManticoreDb::table('?products')->create([
@@ -772,6 +771,22 @@ $rows = ManticoreDb::table('?products')->callSuggest('mantikore');
 $rows = ManticoreDb::table('?products')->callSuggest('mantikore', ['limit' => 5, 'max_edits' => 2]);
 ```
 
+`distance` — на сколько правок слово отличается от переданного, `docs` — в скольких документах
+оно встречается. Слово, написанное верно, возвращается само с `distance` равным нулю, а слово,
+к которому в таблице нет ничего похожего, даёт пустой набор, — то есть «опечатка это или нет»
+решается по расстоянию, а не по наличию ответа. Условия запроса игнорируются: команда работает
+по словарю всей таблицы и фильтров не принимает.
+
+**Таблица должна быть создана с `min_infix_len`** — именно с ним, а не с `min_prefix_len`. Без
+этого сервер не возвращает пустой ответ, а отвергает запрос:
+
+```
+QueryErrorException: … 1064 suggests work only for keywords dictionary with infix enabled
+```
+
+Настройка задаётся в `CREATE TABLE`, поэтому включить инфиксы у существующей таблицы, не
+пересоздав её, нельзя.
+
 ### callQsuggest()
 
 `CALL QSUGGEST` — то же самое, но для фразы, а не одного слова. Исправляется только её последнее
@@ -781,6 +796,26 @@ $rows = ManticoreDb::table('?products')->callSuggest('mantikore', ['limit' => 5,
 $rows = ManticoreDb::table('?products')->callQsuggest('manticore serch');
 // [['suggest' => 'search', 'distance' => 1, 'docs' => 2]]
 ```
+
+Целую фразу не исправляет ни одна из двух команд: `SUGGEST` отвечает по её первому слову,
+`QSUGGEST` — по последнему. Фраза с опечатками в нескольких словах требует вызова на каждое
+слово, а разобрать её так же, как это сделала бы сама таблица, помогает `callKeywords()`:
+
+```php
+$words = array_column(ManticoreDb::table('?products')->callKeywords($phrase), 'tokenized');
+
+$fixed = [];
+foreach ($words as $word) {
+    $rows = ManticoreDb::table('?products')->callSuggest($word, ['limit' => 1, 'max_edits' => 2]);
+    $fixed[] = ($rows && $rows[0]['distance'] > 0) ? $rows[0]['suggest'] : $word;
+}
+
+$corrected = implode(' ', $fixed);
+```
+
+`max_edits` не даёт «исправить» слово, которого таблица никогда не видела, на далёкое от него,
+а `tokenized` — это токен в том виде, в каком он был написан: `normalized` там, где включена
+морфология, даст лемму, то есть слово, которого пользователь не вводил.
 
 ### callKeywords()
 

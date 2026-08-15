@@ -2626,13 +2626,20 @@ class Query
     /**
      * CALL SUGGEST: the words of the table closest to the given one, i.e. "did you mean".
      *
-     * The table has to be built with infixes (min_infix_len), otherwise the server has nothing
-     * to compare the word against and answers with an empty set.
+     * The table has to be built with min_infix_len - and with that one, not min_prefix_len: the
+     * server rejects the statement outright otherwise ("suggests work only for keywords
+     * dictionary with infix enabled"), which arrives here as a QueryErrorException rather than
+     * as an empty answer. The setting belongs to CREATE TABLE, so it cannot be turned on for an
+     * existing table without rebuilding it.
+     *
+     * A word that is spelled right comes back as itself with a distance of 0, and a word with
+     * nothing close to it in the table gives an empty set - so "is it a typo" is a question of
+     * the distance, not of whether there is an answer.
      *
      *      table('?products')->callSuggest('mantikore')
      *      table('?products')->callSuggest('mantikore', ['limit' => 5, 'max_edits' => 2])
      *
-     * @param string $word the word to look for a correction of
+     * @param string $word the word to look for a correction of, the first one of a phrase
      * @param array|null $options options of the statement: limit, max_edits, result_stats, ...
      *
      * @return array rows of "suggest", "distance" and "docs"
@@ -2647,7 +2654,12 @@ class Query
      * CALL QSUGGEST: the same as callSuggest(), for a phrase rather than a single word.
      *
      * Only the last word of the phrase is corrected, which is what a search box needs while
-     * someone is still typing - the words before it are taken as they are.
+     * someone is still typing - the words before it are taken as they are. Neither statement
+     * corrects a whole phrase: SUGGEST answers for its first word, QSUGGEST for its last, so a
+     * phrase with two typos in it takes a call per word (callKeywords() splits it the way the
+     * table does).
+     *
+     * It needs min_infix_len of the table just as callSuggest() does, see there.
      *
      *      table('?products')->callQsuggest('manticore serch')
      *
