@@ -21,7 +21,7 @@ Jump To:
 * [Walking over a large result](#walking-over-a-large-result)
 * [Conditional building](#conditional-building)
 * [Faceted search](#faceted-search)
-* [Statements written as CALL](#statements-written-as-call)
+* [The `CALL *` statements](#the-call--statements)
 
 ## Retrieving rows from a table
 
@@ -748,7 +748,7 @@ Facet methods you can use in a closure:
 * limit(int $offset, int $limit)
 * offset(int $offset)
 
-## Statements written as CALL
+## The `CALL *` statements
 
 Five statements of Manticore work through the table without being a search of it: they are
 written as `CALL` and the builder wraps them as methods of the same name. All five answer with an
