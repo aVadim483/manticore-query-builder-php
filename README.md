@@ -20,6 +20,8 @@ Features
 * Column types are applied in both directions: PHP values on write, PHP types on read
 * The helpers of the Laravel query builder: aggregates, chunked walks, conditional building,
   conditions on dates, upsert and the rest
+* Every CALL statement of the server as a method: `callSuggest()`, `callQsuggest()`,
+  `callKeywords()`, `callSnippets()` and `callPq()` (percolate queries)
 * A rejected read throws, a rejected write answers with false or zero and keeps its reason
 * PSR-3 logging of queries and EXPLAIN of full-text expressions
 

@@ -21,6 +21,7 @@ Jump To:
 * [Walking over a large result](#walking-over-a-large-result)
 * [Conditional building](#conditional-building)
 * [Faceted search](#faceted-search)
+* [Statements written as CALL](#statements-written-as-call)
 
 ## Retrieving rows from a table
 
@@ -746,3 +747,113 @@ Facet methods you can use in a closure:
 * limit(int $limit)
 * limit(int $offset, int $limit)
 * offset(int $offset)
+
+## Statements written as CALL
+
+Five statements of Manticore work through the table without being a search of it: they are
+written as `CALL` and the builder wraps them as methods of the same name. All five answer with an
+array of rows and throw `QueryErrorException` when the server rejects the statement, the same way
+a read does.
+
+### callSuggest()
+
+`CALL SUGGEST` — the words of the table closest to the given one, i.e. "did you mean". The table
+has to be built with infixes, otherwise the server has nothing to compare against:
+
+```php
+ManticoreDb::table('?products')->create([
+    'title' => 'text',
+], ['min_infix_len' => 2]);
+
+$rows = ManticoreDb::table('?products')->callSuggest('mantikore');
+// [['suggest' => 'manticore', 'distance' => 1, 'docs' => 3]]
+
+$rows = ManticoreDb::table('?products')->callSuggest('mantikore', ['limit' => 5, 'max_edits' => 2]);
+```
+
+### callQsuggest()
+
+`CALL QSUGGEST` — the same, for a phrase rather than a single word. Only its last word is
+corrected, which is what a search box needs while someone is still typing:
+
+```php
+$rows = ManticoreDb::table('?products')->callQsuggest('manticore serch');
+// [['suggest' => 'search', 'distance' => 1, 'docs' => 2]]
+```
+
+### callKeywords()
+
+`CALL KEYWORDS` — what the tokenizer of the table makes of the text, which is the answer to "why
+does this query match that row":
+
+```php
+$rows = ManticoreDb::table('?products')->callKeywords('Running Shoes');
+// [
+//   ['qpos' => 1, 'tokenized' => 'running', 'normalized' => 'running'],
+//   ['qpos' => 2, 'tokenized' => 'shoes',   'normalized' => 'shoes'],
+// ]
+
+$rows = ManticoreDb::table('?products')->callKeywords('running', ['stats' => true]);
+// each row also carries "docs" and "hits"
+```
+
+### callSnippets()
+
+`CALL SNIPPETS` — the documents given to it with the matching parts marked up. The documents are
+passed in rather than read from the table: the table only lends its tokenizer and its stopwords,
+so the highlighting follows the same rules as the search.
+
+```php
+$rows = ManticoreDb::table('?products')->callSnippets('the quick brown fox', 'fox');
+// [['snippet' => 'the quick brown <b>fox</b>']]
+
+$rows = ManticoreDb::table('?products')->callSnippets(
+    ['the quick brown fox', 'a lazy dog'],
+    'fox|dog',
+    ['before_match' => '<em>', 'after_match' => '</em>']
+);
+// a row per document
+```
+
+### callPq()
+
+`CALL PQ` — the search the other way round. A percolate table (`type='pq'`) holds queries rather
+than documents, and this asks which of them a document would have been an answer to — the way a
+saved search or an alert works.
+
+```php
+ManticoreDb::table('?subscriptions')->create([
+    'title' => 'text',
+    'gid'   => 'int',
+], ['type' => 'pq']);
+
+ManticoreDb::connection()->statement("INSERT INTO subscriptions (query, tags) VALUES ('fox', 'animals')");
+
+$rows = ManticoreDb::table('?subscriptions')->callPq(['title' => 'the quick brown fox']);
+// [['id' => 6416985563647181697]]
+
+// a set of documents, and the stored query itself in the answer
+$rows = ManticoreDb::table('?subscriptions')->callPq(
+    [['title' => 'the quick brown fox'], ['title' => 'a lazy dog']],
+    ['docs' => true, 'query' => true]
+);
+// [['id' => …, 'documents' => '1', 'query' => 'fox', 'tags' => 'animals', 'filters' => ''], …]
+```
+
+An array is a document of its own and goes to the server as JSON. A string is taken as the text
+of a document, and `0 AS docs_json` — which the server needs to read it that way — is added along
+the way; pass `['docs_json' => true]` yourself to send a string that already holds JSON.
+
+`documents` of the answer is the list of positions of the documents that matched, `'1'` or
+`'1,2'`, so it stays a string even when it holds a single number.
+
+### Options and types of the answer
+
+Everything after the arguments is an option of the statement, rendered as `<value> AS <name>`:
+`['limit' => 5]` becomes `5 AS limit`, `['stats' => true]` becomes `1 AS stats`. Values are
+escaped, so what a user typed can be passed in as it is; the names are not, and a name that is
+not a plain word is refused with `InvalidArgumentException`.
+
+Numbers of the answer are read as numbers — `distance`, `docs`, `hits` and `qpos` come back as
+`int`, while `suggest`, `snippet`, `tokenized`, `normalized`, `query`, `tags`, `filters` and
+`documents` stay strings.

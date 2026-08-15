@@ -21,6 +21,7 @@
 * [Условное построение запроса](#условное-построение-запроса)
 * [Работа с JSON-атрибутами](#работа-с-json-атрибутами)
 * [Фасетный поиск](#фасетный-поиск)
+* [Команды, которые пишутся как CALL](#команды-которые-пишутся-как-call)
 
 ## Получение строк из таблицы
 
@@ -748,3 +749,112 @@ foreach ($res->facets(1) as $key => $facet) {
 * limit(int $limit)
 * limit(int $offset, int $limit)
 * offset(int $offset)
+
+## Команды, которые пишутся как CALL
+
+Пять команд Manticore работают через таблицу, не будучи поиском по ней: они пишутся как
+`CALL`, и билдер оборачивает их в одноимённые методы. Все пять возвращают массив строк и
+бросают `QueryErrorException`, если сервер отверг запрос, — так же, как это делает чтение.
+
+### callSuggest()
+
+`CALL SUGGEST` — слова таблицы, ближайшие к заданному, то есть «возможно, вы имели в виду».
+Таблица должна быть построена с инфиксами, иначе серверу не с чем сравнивать:
+
+```php
+ManticoreDb::table('?products')->create([
+    'title' => 'text',
+], ['min_infix_len' => 2]);
+
+$rows = ManticoreDb::table('?products')->callSuggest('mantikore');
+// [['suggest' => 'manticore', 'distance' => 1, 'docs' => 3]]
+
+$rows = ManticoreDb::table('?products')->callSuggest('mantikore', ['limit' => 5, 'max_edits' => 2]);
+```
+
+### callQsuggest()
+
+`CALL QSUGGEST` — то же самое, но для фразы, а не одного слова. Исправляется только её последнее
+слово — ровно то, что нужно строке поиска, пока пользователь ещё печатает:
+
+```php
+$rows = ManticoreDb::table('?products')->callQsuggest('manticore serch');
+// [['suggest' => 'search', 'distance' => 1, 'docs' => 2]]
+```
+
+### callKeywords()
+
+`CALL KEYWORDS` — то, во что токенизатор таблицы превращает текст; это ответ на вопрос «почему
+запрос совпал именно с этой строкой»:
+
+```php
+$rows = ManticoreDb::table('?products')->callKeywords('Running Shoes');
+// [
+//   ['qpos' => 1, 'tokenized' => 'running', 'normalized' => 'running'],
+//   ['qpos' => 2, 'tokenized' => 'shoes',   'normalized' => 'shoes'],
+// ]
+
+$rows = ManticoreDb::table('?products')->callKeywords('running', ['stats' => true]);
+// в каждой строке появятся ещё "docs" и "hits"
+```
+
+### callSnippets()
+
+`CALL SNIPPETS` — переданные документы с подсветкой совпавших частей. Документы именно
+передаются, а не читаются из таблицы: таблица одалживает только свой токенизатор и стоп-слова,
+поэтому подсветка следует тем же правилам, что и поиск.
+
+```php
+$rows = ManticoreDb::table('?products')->callSnippets('the quick brown fox', 'fox');
+// [['snippet' => 'the quick brown <b>fox</b>']]
+
+$rows = ManticoreDb::table('?products')->callSnippets(
+    ['the quick brown fox', 'a lazy dog'],
+    'fox|dog',
+    ['before_match' => '<em>', 'after_match' => '</em>']
+);
+// по строке на документ
+```
+
+### callPq()
+
+`CALL PQ` — поиск наоборот. Перколятивная таблица (`type='pq'`) хранит запросы, а не документы,
+и эта команда спрашивает, ответом на какие из них стал бы документ, — так работают сохранённые
+поиски и оповещения.
+
+```php
+ManticoreDb::table('?subscriptions')->create([
+    'title' => 'text',
+    'gid'   => 'int',
+], ['type' => 'pq']);
+
+ManticoreDb::connection()->statement("INSERT INTO subscriptions (query, tags) VALUES ('fox', 'animals')");
+
+$rows = ManticoreDb::table('?subscriptions')->callPq(['title' => 'the quick brown fox']);
+// [['id' => 6416985563647181697]]
+
+// набор документов и сам сохранённый запрос в ответе
+$rows = ManticoreDb::table('?subscriptions')->callPq(
+    [['title' => 'the quick brown fox'], ['title' => 'a lazy dog']],
+    ['docs' => true, 'query' => true]
+);
+// [['id' => …, 'documents' => '1', 'query' => 'fox', 'tags' => 'animals', 'filters' => ''], …]
+```
+
+Массив — это отдельный документ, он уходит на сервер как JSON. Строка считается текстом
+документа, и `0 AS docs_json`, который для этого нужен серверу, добавляется автоматически;
+чтобы отправить строку, в которой уже лежит JSON, передайте `['docs_json' => true]`.
+
+`documents` в ответе — список позиций совпавших документов, `'1'` или `'1,2'`, поэтому он
+остаётся строкой, даже когда содержит одно число.
+
+### Опции и типы ответа
+
+Всё, что идёт после аргументов, — опции команды, которые рендерятся как `<значение> AS <имя>`:
+`['limit' => 5]` превращается в `5 AS limit`, `['stats' => true]` — в `1 AS stats`. Значения
+экранируются, поэтому пользовательский ввод можно передавать как есть; имена — нет, и имя, не
+являющееся обычным словом, отвергается с `InvalidArgumentException`.
+
+Числа в ответе читаются как числа: `distance`, `docs`, `hits` и `qpos` приходят `int`, а
+`suggest`, `snippet`, `tokenized`, `normalized`, `query`, `tags`, `filters` и `documents`
+остаются строками.

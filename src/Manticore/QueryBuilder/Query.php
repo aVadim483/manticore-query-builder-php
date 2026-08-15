@@ -2610,6 +2610,295 @@ class Query
         return $this->_resultSet($result);
     }
 
+    // +++ CALL +++ //
+
+    /**
+     * Columns of a CALL answer that are text, whatever they look like: everything else the
+     * server sends as a string of digits is a number and is read as one
+     */
+    public const CALL_TEXT_COLUMNS = [
+        'tokenized', 'normalized', 'suggest', 'snippet',
+        // of CALL PQ: the stored query with its tags, and the positions of the documents that
+        // matched it - a list like "1,2", which stays a string even when it holds one number
+        'query', 'tags', 'filters', 'documents',
+    ];
+
+    /**
+     * CALL SUGGEST: the words of the table closest to the given one, i.e. "did you mean".
+     *
+     * The table has to be built with infixes (min_infix_len), otherwise the server has nothing
+     * to compare the word against and answers with an empty set.
+     *
+     *      table('?products')->callSuggest('mantikore')
+     *      table('?products')->callSuggest('mantikore', ['limit' => 5, 'max_edits' => 2])
+     *
+     * @param string $word the word to look for a correction of
+     * @param array|null $options options of the statement: limit, max_edits, result_stats, ...
+     *
+     * @return array rows of "suggest", "distance" and "docs"
+     * @throws QueryErrorException when the server rejected the statement
+     */
+    public function callSuggest(string $word, ?array $options = []): array
+    {
+        return $this->_execCall('SUGGEST', [$word, $this->_callTable()], $options);
+    }
+
+    /**
+     * CALL QSUGGEST: the same as callSuggest(), for a phrase rather than a single word.
+     *
+     * Only the last word of the phrase is corrected, which is what a search box needs while
+     * someone is still typing - the words before it are taken as they are.
+     *
+     *      table('?products')->callQsuggest('manticore serch')
+     *
+     * @param string $phrase the phrase whose last word is to be corrected
+     * @param array|null $options options of the statement: limit, max_edits, result_stats, ...
+     *
+     * @return array rows of "suggest", "distance" and "docs"
+     * @throws QueryErrorException when the server rejected the statement
+     */
+    public function callQsuggest(string $phrase, ?array $options = []): array
+    {
+        return $this->_execCall('QSUGGEST', [$phrase, $this->_callTable()], $options);
+    }
+
+    /**
+     * CALL KEYWORDS: what the tokenizer of the table makes of the given text.
+     *
+     * Useful to see why a query matches what it matches - the words it was split into, and with
+     * "stats" how many documents and hits each of them has.
+     *
+     *      table('?products')->callKeywords('running shoes')
+     *      table('?products')->callKeywords('running shoes', ['stats' => true])
+     *
+     * @param string $text the text to tokenize
+     * @param array|null $options options of the statement: stats, fold_wildcards, sort_mode, ...
+     *
+     * @return array rows of "qpos", "tokenized" and "normalized", plus "docs"/"hits" with stats
+     * @throws QueryErrorException when the server rejected the statement
+     */
+    public function callKeywords(string $text, ?array $options = []): array
+    {
+        return $this->_execCall('KEYWORDS', [$text, $this->_callTable()], $options);
+    }
+
+    /**
+     * CALL SNIPPETS: the given documents with the parts matching the query marked up.
+     *
+     * The documents are passed in, not read from the table - the table only lends its tokenizer
+     * and its stopwords, so the highlighting follows the same rules as the search.
+     *
+     *      table('?products')->callSnippets($text, 'brown fox')
+     *      table('?products')->callSnippets([$one, $other], 'brown fox', ['before_match' => '<em>'])
+     *
+     * @param string|array $data a document, or a list of them
+     * @param string $query the full-text query the highlighting follows
+     * @param array|null $options options of the statement: before_match, after_match, around, ...
+     *
+     * @return array a row of "snippet" per document
+     * @throws QueryErrorException when the server rejected the statement
+     */
+    public function callSnippets($data, string $query, ?array $options = []): array
+    {
+        return $this->_execCall('SNIPPETS', [$data, $this->_callTable(), $query], $options);
+    }
+
+    /**
+     * CALL PQ: the stored queries of a percolate table that the given documents would match.
+     *
+     * The search runs the other way round here - the table holds queries, not documents, and
+     * this asks which of them a document would have been an answer to.
+     *
+     *      table('?subscriptions')->callPq(['title' => 'the quick brown fox'])
+     *      table('?subscriptions')->callPq([$one, $other], ['docs' => true, 'query' => true])
+     *
+     * An array is a document of its own and goes to the server as JSON; a string is taken as the
+     * text of a document, and the "docs_json" option that the server needs for it is added along
+     * the way. Pass "docs_json" yourself to send a string that already holds JSON.
+     *
+     * @param array|string $documents a document, or a list of them
+     * @param array|null $options options of the statement: docs, query, verbose, docs_json, ...
+     *
+     * @return array rows of "id", plus "documents"/"query"/"tags"/"filters" as asked for
+     * @throws QueryErrorException when the server rejected the statement
+     */
+    public function callPq($documents, ?array $options = []): array
+    {
+        $options = $options ?: [];
+        $prepared = $this->_pqDocuments($documents, $options);
+
+        return $this->_execCall('PQ', [$this->_callTable(), $prepared], $options);
+    }
+
+    /**
+     * The documents of CALL PQ, as the server wants to read them.
+     *
+     * @param array|string $documents
+     * @param array $options taken by reference: text documents add "docs_json" to them
+     *
+     * @return array|string
+     */
+    protected function _pqDocuments($documents, array &$options)
+    {
+        if ($documents === '' || $documents === [] || (!is_array($documents) && !is_string($documents))) {
+            throw new \InvalidArgumentException('A document of CALL PQ is an array or a string, and cannot be empty');
+        }
+
+        $text = false;
+        if (is_string($documents)) {
+            $prepared = $documents;
+            $text = true;
+        }
+        elseif (self::isMultiRow($documents)) {
+            // a list of documents, each of them an array
+            $prepared = array_map([self::class, '_pqEncode'], array_values($documents));
+        }
+        elseif (array_keys($documents) === range(0, count($documents) - 1)) {
+            // a list of documents, each of them a text
+            $prepared = array_values($documents);
+            $text = true;
+        }
+        else {
+            $prepared = self::_pqEncode($documents);
+        }
+
+        // the server reads a document as JSON unless it is told otherwise
+        if ($text && !array_key_exists('docs_json', $options)) {
+            $options['docs_json'] = 0;
+        }
+
+        return $prepared;
+    }
+
+    /**
+     * A document of CALL PQ as JSON
+     *
+     * @param array $document
+     *
+     * @return string
+     */
+    protected static function _pqEncode(array $document): string
+    {
+        return (string)json_encode($document, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * The table a CALL statement works on
+     *
+     * @return string
+     */
+    protected function _callTable(): string
+    {
+        $table = $this->_sqlTable();
+        if (!$table) {
+            throw new \LogicException('CALL needs a table: call table() first');
+        }
+
+        return $table;
+    }
+
+    /**
+     * Build and run a CALL statement.
+     *
+     * It goes through _execQuery() like any other statement, so a rejected one lands in the
+     * ResultSet and in the log; the throw here is what a read does, because this is one.
+     *
+     * @param string $command
+     * @param array $arguments positional arguments of the statement
+     * @param array|null $options named options, rendered as "<value> AS <name>"
+     *
+     * @return array
+     * @throws QueryErrorException when the server rejected the statement
+     */
+    protected function _execCall(string $command, array $arguments, ?array $options = []): array
+    {
+        $parts = array_merge(
+            array_map([self::class, '_callArgument'], $arguments),
+            $this->_callOptions($options ?: [])
+        );
+        $sql = 'CALL ' . $command . '(' . implode(', ', $parts) . ')';
+
+        $result = $this->_execQuery([
+            'command' => 'CALL',
+            'query' => $sql,
+            'original' => null,
+        ]);
+
+        if (!$result->success()) {
+            throw new QueryErrorException((string)$result->error(), $result->sqlQuery());
+        }
+
+        return $this->_castCall($result->result());
+    }
+
+    /**
+     * An argument of a CALL statement: a value, or a list of them for the documents of SNIPPETS
+     *
+     * @param mixed $value
+     *
+     * @return string
+     */
+    protected static function _callArgument($value): string
+    {
+        if (is_array($value)) {
+            return '(' . implode(', ', array_map([self::class, '_callArgument'], $value)) . ')';
+        }
+
+        return self::quoteParam($value);
+    }
+
+    /**
+     * Options of a CALL statement, which the server takes as "<value> AS <name>"
+     *
+     * @param array $options
+     *
+     * @return array
+     */
+    protected function _callOptions(array $options): array
+    {
+        $parts = [];
+        foreach ($options as $name => $value) {
+            // the name goes into SQL as it is, so it is checked instead of being escaped
+            if (!is_string($name) || !preg_match('#^\w+$#', $name)) {
+                throw new \InvalidArgumentException('"' . $name . '" is not a name of a CALL option');
+            }
+            $parts[] = self::quoteParam($value) . ' AS ' . $name;
+        }
+
+        return $parts;
+    }
+
+    /**
+     * Read the numbers of a CALL answer as numbers.
+     *
+     * The server sends everything as a string over the SQL protocol, and a CALL answer has no
+     * schema to cast it by - so the columns known to be text are left alone and the rest is read
+     * as a number when it looks like one.
+     *
+     * @param mixed $rows
+     *
+     * @return array
+     */
+    protected function _castCall($rows): array
+    {
+        $result = [];
+        foreach (is_array($rows) ? $rows : [] as $key => $row) {
+            if (!is_array($row)) {
+                $result[$key] = $row;
+                continue;
+            }
+
+            foreach ($row as $column => $value) {
+                if (is_string($value) && is_numeric($value) && !in_array($column, self::CALL_TEXT_COLUMNS, true)) {
+                    $row[$column] = strpos($value, '.') === false ? (int)$value : (float)$value;
+                }
+            }
+            $result[$key] = $row;
+        }
+
+        return $result;
+    }
+
     /**
      * Share the schema cache of the connection.
      *
