@@ -1,0 +1,21 @@
+# Line endings.
+#
+# LF in the repository and in the working copy, whatever core.autocrlf the client happens to
+# be set to - without this the endings of a file depend on the machine it was committed from.
+* text=auto eol=lf
+
+# ... with the exception of the files cmd.exe reads, which need CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# What the package does not ship.
+#
+# Composer installs a library from the dist archive that GitHub builds with git archive, and
+# everything marked here is left out of it: the tests, the documentation and the CI config are
+# read on GitHub, not from vendor/ - they are about two thirds of the archive.
+/tests          export-ignore
+/docs           export-ignore
+/.github        export-ignore
+/phpunit.xml    export-ignore
+/.gitignore     export-ignore
+/.gitattributes export-ignore

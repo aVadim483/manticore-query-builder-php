@@ -1,0 +1,16 @@
+# Dependencies: a library ships its sources, the lock file belongs to the application
+/vendor/
+/composer.lock
+
+# PHPUnit
+/.phpunit.result.cache
+/.phpunit.cache/
+/build/
+/coverage/
+
+# IDE and OS
+/.idea/
+/.vscode/
+*.iml
+.DS_Store
+Thumbs.db

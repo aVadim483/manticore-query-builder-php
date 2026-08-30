@@ -1,0 +1,103 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The offline half of the suite: FakeClient stands in for the server, so this runs on every
+  # supported PHP without a container behind it
+  unit:
+    name: unit / PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.1', '8.2', '8.3', '8.4']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo, pdo_mysql, mbstring, json
+          coverage: none
+
+      - name: Cache the composer files
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ matrix.php }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-
+
+      # update, not install: a library ships no composer.lock, so this checks the current
+      # dependencies as well
+      - name: Install the dependencies
+        run: composer update --prefer-dist --no-progress --no-interaction
+
+      - name: Run the unit tests
+        run: vendor/bin/phpunit --testsuite unit
+
+  # The half that needs a live server, on the two ends of the supported range
+  integration:
+    name: integration / PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.4']
+
+    services:
+      manticore:
+        image: manticoresearch/manticore:latest
+        ports:
+          # the ports the tests expect by default, see MANTICORE_HOST/MANTICORE_PORT
+          # in phpunit.xml
+          - 9306:9306
+          - 9308:9308
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo, pdo_mysql, mbstring, json
+          coverage: none
+
+      - name: Cache the composer files
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ matrix.php }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-
+
+      - name: Install the dependencies
+        run: composer update --prefer-dist --no-progress --no-interaction
+
+      # the image promises no mysql or curl of its own, so the port is waited for from the
+      # outside rather than through a health check of the container
+      - name: Wait for Manticore
+        run: |
+          for i in $(seq 1 60); do
+            (echo > /dev/tcp/127.0.0.1/9306) >/dev/null 2>&1 && exit 0
+            sleep 1
+          done
+          echo 'Manticore did not answer on 127.0.0.1:9306'
+          exit 1
+
+      # the whole suite here: the unit half is cheap and keeps this job self-contained
+      - name: Run the tests
+        run: vendor/bin/phpunit
+
+  # TODO: a job against an older server would be worth having - the builder deliberately
+  # supports the answers of Manticore before v6 (the "Index" column of SHOW TABLES, the
+  # "index_type" of SHOW TABLE STATUS), and none of those branches is ever executed against
+  # ":latest". It only takes this same job with the image pinned to a tag of the previous
+  # major version - pick one that really exists on Docker Hub.
