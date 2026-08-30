@@ -65,6 +65,15 @@ class PDOClient
                     case 'TIMESTAMP':
                         $rows[$numRow][$meta['name']] =  (int)$row[$meta['name']];
                         break;
+                    case 'FLOAT':
+                    case 'DOUBLE':
+                    case 'NEWDECIMAL':
+                        // PDO hands numbers over as strings on PHP 7.4 and as numbers since
+                        // 8.1, and a computed column - SUM(price) as _aggregate - has no type
+                        // in DESCRIBE to be cast by afterwards. Reading the type the server
+                        // reports makes the answer the same on every version of PHP.
+                        $rows[$numRow][$meta['name']] =  (float)$row[$meta['name']];
+                        break;
                     case 'NULL':
                         $rows[$numRow][$meta['name']] =  null;
                         break;

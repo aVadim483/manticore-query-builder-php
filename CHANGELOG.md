@@ -60,6 +60,11 @@ A release of fixes, two of which change behaviour that was there before — see 
 * **A column named after a PHP function is a column.** `is_callable('time')` is true, so
   `where('time', 30)` took the column name for a group of conditions and called the function
   itself. Affected `time`, `date`, `key`, `count`, `link`, `hash`, `sort` and the like.
+* **Aggregates answer with a number on PHP 7.4 too.** `sum()`, `avg()`, `min()` and `max()`
+  came back as strings (`'30.000000'`) there, while PHP 8.1 and above turned them into floats
+  by themselves: a computed column has no type in `DESCRIBE` to be cast by, so the type the
+  server reports for it is read instead. The same applies to any float expression selected
+  under an alias.
 * A `Query` built without the `client` key of the config no longer raises a warning, and opens
   its connection with the config it was given instead of with an empty one.
 
