@@ -151,7 +151,9 @@ final class CrudTest extends IntegrationTestCase
         ManticoreDb::table($this->table)->insert($this->row());
 
         $first = ManticoreDb::table($this->table)->first();
-        $fromGet = reset(ManticoreDb::table($this->table)->get());
+        // reset() takes its argument by reference, so the rows need a variable of their own
+        $rows = ManticoreDb::table($this->table)->get();
+        $fromGet = reset($rows);
 
         $this->assertSame(array_keys($fromGet), array_keys($first));
     }
@@ -429,21 +431,28 @@ final class CrudTest extends IntegrationTestCase
         $this->assertSame('Ёлка «ёж»', ManticoreDb::table($this->table)->find($id)['manufacturer']);
     }
 
+    /**
+     * A rejected write is a duplicate id here, not a missing table: a server with Manticore
+     * Buddy creates the table on an INSERT instead of refusing it, so a missing table is no
+     * longer a failure everywhere - a duplicate id is one on every version.
+     */
     public function testScalarWritesReportFailureWithoutThrowing(): void
     {
-        $missing = 'no_such_table_' . uniqid();
+        ManticoreDb::table($this->table)->insert($this->row(['id' => 7]));
 
-        $this->assertFalse(ManticoreDb::table($missing)->insert(['title' => 'nope']));
-        $this->assertNull(ManticoreDb::table($missing)->insertGetId(['title' => 'nope']));
+        $this->assertFalse(ManticoreDb::table($this->table)->insert($this->row(['id' => 7])));
+        $this->assertNull(ManticoreDb::table($this->table)->insertGetId($this->row(['id' => 7])));
+
+        $missing = 'no_such_table_' . uniqid();
         $this->assertSame(0, ManticoreDb::table($missing)->where('id', 1)->update(['title' => 'nope']));
         $this->assertSame(0, ManticoreDb::table($missing)->where('id', 1)->delete());
     }
 
     public function testLastResultSetCarriesTheErrorOfAScalarWrite(): void
     {
-        $missing = 'no_such_table_' . uniqid();
+        ManticoreDb::table($this->table)->insert($this->row(['id' => 7]));
 
-        $this->assertFalse(ManticoreDb::table($missing)->insert(['title' => 'nope']));
+        $this->assertFalse(ManticoreDb::table($this->table)->insert($this->row(['id' => 7])));
 
         // the scalar answer says "it failed", the ResultSet left behind says why - note that
         // columnTypes() runs a DESCRIBE of its own before the INSERT, and it must not be the

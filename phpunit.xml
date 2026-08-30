@@ -28,6 +28,10 @@
     </coverage>
 
     <php>
+        <!-- so that a notice hidden by the php.ini of a development machine (the "Only
+             variables should be passed by reference" of a reset() over a function call, say)
+             fails the suite here as well as on CI -->
+        <ini name="error_reporting" value="E_ALL"/>
         <env name="MANTICORE_HOST" value="127.0.0.1"/>
         <env name="MANTICORE_PORT" value="9306"/>
     </php>

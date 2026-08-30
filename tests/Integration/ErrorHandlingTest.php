@@ -99,6 +99,11 @@ final class ErrorHandlingTest extends IntegrationTestCase
      * Write commands ask for the column types (DESCRIBE) before their SQL is even built,
      * so an unknown table must not turn that into an exception.
      *
+     * What the server makes of the statement afterwards is its business and differs between
+     * versions: one with Manticore Buddy creates the table on an INSERT (its auto schema),
+     * an older one refuses the statement. Either way it has to come back as a ResultSet - a
+     * rejected one carrying the name of the table in its error.
+     *
      * @dataProvider writeCommandProvider
      *
      * @param string $method
@@ -110,7 +115,14 @@ final class ErrorHandlingTest extends IntegrationTestCase
 
         $result = ManticoreDb::table($table)->$method(...$args);
 
-        $this->assertFalse($result->success());
+        if ($result->success()) {
+            // the server created the table itself, so there is no error to look at
+            $this->assertContains($method, ['insertResultSet', 'replaceResultSet'],
+                $method . ' is not a statement the auto schema of the server answers with a success');
+
+            return;
+        }
+
         $this->assertStringContainsString($table, (string)$result->error());
     }
 
