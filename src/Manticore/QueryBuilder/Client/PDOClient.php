@@ -25,10 +25,13 @@ class PDOClient
         else {
             $this->dsn = 'mysql:host=' . ($this->config['host'] ?? 'localhost') . ';port=' . ($this->config['port'] ?? '9306');
         }
-        $this->dbh = new \PDO($this->dsn, $this->config['username'] ?? null, $this->config['password'] ?? null);
+        $options = [];
         if (!empty($config['timeout'])) {
-            $this->dbh->setAttribute(\PDO::ATTR_TIMEOUT, $config['timeout']);
+            // the timeout has to be handed to the constructor: set afterwards it would only
+            // apply once the connection is there, i.e. never to the connecting itself
+            $options[\PDO::ATTR_TIMEOUT] = (int)$config['timeout'];
         }
+        $this->dbh = new \PDO($this->dsn, $this->config['username'] ?? null, $this->config['password'] ?? null, $options);
     }
 
     /**
@@ -72,24 +75,37 @@ class PDOClient
         return $rows;
     }
 
-    protected function prepare(string $query, ?array $params = []): ?\PDOStatement
+    /**
+     * A statement ready to be executed.
+     *
+     * PDO runs in its silent error mode here, so a statement it refuses to prepare comes back
+     * as false. That has to be raised: answering with "no statement" made the caller return an
+     * empty array, which the builder reads as an answer without rows - i.e. a rejected query
+     * was reported as a successful one.
+     *
+     * @param string $query
+     * @param array|null $params
+     *
+     * @return \PDOStatement
+     */
+    protected function prepare(string $query, ?array $params = []): \PDOStatement
     {
-        if ($stm = $this->dbh->prepare($query)) {
-            if ($params) {
-                foreach ($params as $key => $val) {
-                    if (is_int($val)) {
-                        $stm->bindValue($key, $val, \PDO::PARAM_INT);
-                    }
-                    else {
-                        $stm->bindValue($key, $val, \PDO::PARAM_STR);
-                    }
+        $stm = $this->dbh->prepare($query);
+        if (!$stm) {
+            $this->error($query, $this->dbh->errorInfo());
+        }
+        if ($params) {
+            foreach ($params as $key => $val) {
+                if (is_int($val)) {
+                    $stm->bindValue($key, $val, \PDO::PARAM_INT);
+                }
+                else {
+                    $stm->bindValue($key, $val, \PDO::PARAM_STR);
                 }
             }
-
-            return $stm;
         }
 
-        return null;
+        return $stm;
     }
 
     /**
@@ -101,14 +117,13 @@ class PDOClient
     public function query(string $query, ?array $params = []): array
     {
         $result = [];
-        if ($stm = $this->prepare($query, $params)) {
-            if ($stm->execute()) {
-                $result['data'] = $stm->fetchAll(\PDO::FETCH_ASSOC);
-                $result['count'] = $stm->rowCount();
-            }
-            else {
-                $this->error($query, $stm->errorInfo());
-            }
+        $stm = $this->prepare($query, $params);
+        if ($stm->execute()) {
+            $result['data'] = $stm->fetchAll(\PDO::FETCH_ASSOC);
+            $result['count'] = $stm->rowCount();
+        }
+        else {
+            $this->error($query, $stm->errorInfo());
         }
 
         return $result;
@@ -123,24 +138,23 @@ class PDOClient
     public function select(string $query, ?array $params = []): array
     {
         $result = [];
-        if ($stm = $this->prepare($query, $params)) {
-            if ($stm->execute()) {
-                $result['data'] = [];
-                do {
-                    $rows = $stm->fetchAll(\PDO::FETCH_ASSOC);
-                    if ($rows) {
-                        $n = 0;
-                        $colMeta = [];
-                        foreach ($rows[0] as $col) {
-                            $colMeta[] = $stm->getColumnMeta($n++);
-                        }
-                        $result['data'][] = $this->castValues($rows, $colMeta);
+        $stm = $this->prepare($query, $params);
+        if ($stm->execute()) {
+            $result['data'] = [];
+            do {
+                $rows = $stm->fetchAll(\PDO::FETCH_ASSOC);
+                if ($rows) {
+                    $n = 0;
+                    $colMeta = [];
+                    foreach ($rows[0] as $col) {
+                        $colMeta[] = $stm->getColumnMeta($n++);
                     }
-                } while ($stm->nextRowset());
-            }
-            else {
-                $this->error($query, $stm->errorInfo());
-            }
+                    $result['data'][] = $this->castValues($rows, $colMeta);
+                }
+            } while ($stm->nextRowset());
+        }
+        else {
+            $this->error($query, $stm->errorInfo());
         }
 
         return $result;
@@ -154,18 +168,20 @@ class PDOClient
      */
     public function insert(string $query, ?array $params = []): array
     {
-        $result = [];
-        if ($stm = $this->prepare($query, $params)) {
-            if ($stm->execute()) {
-                $stm = $this->dbh->query('SELECT LAST_INSERT_ID()');
-                if ($stm && ($rows = $stm->fetch()) && !empty($rows[0])) {
-                    $id = array_map('intval', explode(',', $rows[0]));
-                    $result['data'] = (count($id) === 1) ? reset($id) : $id;
-                }
+        $result = ['data' => null];
+        $stm = $this->prepare($query, $params);
+        if ($stm->execute()) {
+            $idStatement = $this->dbh->query('SELECT LAST_INSERT_ID()');
+            if (!$idStatement) {
+                $this->error('SELECT LAST_INSERT_ID()', $this->dbh->errorInfo());
             }
-            else {
-                $this->error($query, $stm->errorInfo());
+            if (($rows = $idStatement->fetch()) && !empty($rows[0])) {
+                $id = array_map('intval', explode(',', $rows[0]));
+                $result['data'] = (count($id) === 1) ? reset($id) : $id;
             }
+        }
+        else {
+            $this->error($query, $stm->errorInfo());
         }
 
         return $result;

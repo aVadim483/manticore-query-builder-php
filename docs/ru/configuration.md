@@ -16,7 +16,7 @@ $config = [
             'port' => 9306,
             'username' => null,
             'password' => null,
-            'timeout' => 5,
+            'timeout' => 5, // сколько секунд ждать установки соединения
             'prefix' => 'test_', // префикс, который подставляется вместо плейсхолдера "?<table_name>"
             'force_prefix' => false,
         ],

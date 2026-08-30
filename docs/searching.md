@@ -90,6 +90,22 @@ $query->toRawSql();   // SELECT * FROM test_products WHERE (country=de)
 Values of the conditions are part of the statement either way — they are put in when it is built,
 not bound — so the two differ only for a query that uses `bind()`.
 
+### Named parameters in the place of a value
+
+A named parameter is written into an expression as it is (`where('country=:country')`,
+`select(['IN(color, :black) as f'])`). In the place of a value it is asked for explicitly:
+
+```php
+ManticoreDb::table('?products')
+    ->where('country', ManticoreDb::param('country'))
+    ->bind([':country' => $country]);
+```
+
+A plain string is never taken for a parameter, however much it looks like one — `':30'` is a
+time someone typed, and a value is quoted whatever it looks like. (Up to v2.0 a value matching
+`:word` was passed through as a placeholder; such a statement failed with *Invalid parameter
+number* as soon as the value really was data.)
+
 ## Select statements
 
 ```php
@@ -464,6 +480,10 @@ $row = ManticoreDb::table('?products')
 
 Values of the joined table are cast by its own schema, so an MVA of it is an array of integers
 rather than the string the server sends.
+
+The rows of a join are handed over as a **plain list**, not as the dictionary keyed by the
+document id that an ordinary SELECT answers with: a join gives one row per pair, so the id of
+the left table repeats itself as soon as the relation is one to many.
 
 What Manticore does not do, and neither does this method: table aliases, subqueries
 (`joinSub()`), and any join condition other than equality — a different operator throws an

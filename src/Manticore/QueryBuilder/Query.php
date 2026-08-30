@@ -98,11 +98,13 @@ class Query
         $this->schema = new SchemaTable();
         $this->setLogger($logger);
 
-        if (is_object($config['client'])) {
+        // the connection puts a ready client here; without one the query opens its own, which
+        // is what a Query built by hand does - so the key may simply not be there
+        if (isset($config['client']) && is_object($config['client'])) {
             $this->client = $config['client'];
         }
         else {
-            $this->client = new PDOClient($this->config['client'] ?? []);
+            $this->client = new PDOClient($this->config['client'] ?? $this->config);
         }
 
         $this->conditions = new QueryConditionSet();
@@ -182,6 +184,19 @@ class Query
         return is_string($param) ? addslashes($param) : (string)$param;
     }
 
+    /**
+     * A value as an SQL literal.
+     *
+     * A string is quoted whatever it looks like: a value that reads as a named parameter
+     * (":30" is a time, ":ok" is a word someone typed) is data like any other, and passing
+     * it through would build SQL with a placeholder the statement has no parameter for -
+     * "Invalid parameter number" on a perfectly ordinary value. A parameter in the place of
+     * a value is asked for explicitly, see param().
+     *
+     * @param mixed $param
+     *
+     * @return string
+     */
     public static function quoteParam($param): string
     {
         if ($param instanceof Expression) {
@@ -196,9 +211,6 @@ class Query
         }
         elseif (is_bool($param)) {
             $result = ($param ? '1' : '0');
-        }
-        elseif (preg_match('#^:\w+$#', $param)) {
-            $result = $param;
         }
         else {
             $result = '\'' . self::escapeParam($param) . '\'';
@@ -287,9 +299,13 @@ class Query
     {
         $types = $this->columnTypes();
         $result = [];
+        // a join answers with one row per pair, so the id of the left table repeats itself as
+        // soon as the relation is one to many - keying by it would keep the last row of every
+        // document and drop the rest
+        $keyById = !$this->joins;
         foreach ($rows as $num => $row) {
             // the id of the document keys the result when it is among the selected columns
-            $resNum = $row['id'] ?? $num;
+            $resNum = $keyById ? ($row['id'] ?? $num) : $num;
             foreach ($row as $col => $val) {
                 if (isset($types[$col])) {
                     switch ($types[$col]) {
@@ -420,7 +436,7 @@ class Query
 
             if ($parsedSql['command'] === 'SHOW TABLES') {
                 $data = [];
-                foreach ($response['data'] as $n => $row) {
+                foreach ($response['data'] ?? [] as $n => $row) {
                     // Manticore used to call this column "Index" and calls it "Table" since v6;
                     // both are reported back, together with "Name" - the logical name, i.e. the
                     // one with the prefix mapped back to the "?table" placeholder
@@ -443,14 +459,14 @@ class Query
             elseif ($parsedSql['command'] === 'INSERT') {
                 $result['result'] = [
                     'type' => 'id',
-                    'data' => $response['data'],
+                    'data' => $response['data'] ?? null,
                     'status' => 'inserted',
                 ];
             }
             elseif ($parsedSql['command'] === 'REPLACE') {
                 $result['result'] = [
                     'type' => 'id',
-                    'data' => $response['data'],
+                    'data' => $response['data'] ?? null,
                     'status' => 'replaced',
                 ];
             }
@@ -460,7 +476,7 @@ class Query
                     'data' => !empty($response['data'][0]) ? $this->_castResult($response['data'][0]) : [],
                 ];
                 unset($response['data'][0]);
-                if (!empty($parsedSql['facets']) && $response['data']) {
+                if (!empty($parsedSql['facets']) && !empty($response['data'])) {
                     $result['facets'] = [];
                     foreach ($parsedSql['facets'] as $n => $desc) {
                         if (isset($response['data'][$n + 1])) {
@@ -520,7 +536,7 @@ class Query
                     'data' => $response['data'][0] ?? [],
                 ];
             }
-            elseif ($response['data'] && is_array($response['data'])) {
+            elseif (!empty($response['data']) && is_array($response['data'])) {
                 $row = reset($response['data']);
                 if (array_key_first($response['data']) === 0 && is_array($row)) {
                     $result['result'] = [
@@ -645,6 +661,28 @@ class Query
     public static function raw(string $value): Expression
     {
         return new Expression($value);
+    }
+
+    /**
+     * A named parameter in the place of a value, to be filled in by bind()
+     *
+     *      where('country', ManticoreDb::param('country'))->bind([':country' => $country])
+     *
+     * A plain string is never taken for a parameter, however much it looks like one - it is
+     * a value and gets quoted, see quoteParam(). This is the way to ask for the other thing.
+     *
+     * @param string $name with or without the leading colon
+     *
+     * @return Expression
+     */
+    public static function param(string $name): Expression
+    {
+        $name = ltrim(trim($name), ':');
+        if (!preg_match('#^\w+$#', $name)) {
+            throw new \InvalidArgumentException('"' . $name . '" is not a name of a parameter');
+        }
+
+        return new Expression(':' . $name);
     }
 
     /**

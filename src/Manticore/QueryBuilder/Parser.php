@@ -274,7 +274,10 @@ class Parser
 
             if ($end) {
                 $level = 1;
-                $len = mb_strlen($str);
+                // the walk is over bytes, so the length has to be counted in bytes as well:
+                // with mb_strlen() every non-ASCII character shortened the string being read
+                // and the tail of it was silently dropped
+                $len = strlen($str);
                 for ($pos = 1; $pos < $len; $pos++) {
                     $char = $str[$pos];
                     $expression .= $char;
@@ -290,7 +293,7 @@ class Parser
                     }
                 }
 
-                return [$expression, trim(mb_substr($str, $pos + 1))];
+                return [$expression, trim(substr($str, $pos + 1))];
             }
         }
 
@@ -573,7 +576,11 @@ class Parser
         $stack = [];
         $chunk = '';
         $quote = null;
-        for ($pos = 0; $pos < mb_strlen($expression); $pos++) {
+        // the separators, quotes and brackets this looks for are all ASCII, so the string is
+        // walked byte by byte - and its length has to be counted in bytes too: mb_strlen()
+        // made the loop stop early on anything non-ASCII and cut the tail off
+        $len = strlen($expression);
+        for ($pos = 0; $pos < $len; $pos++) {
             if ($quote || ($pos > 0 && $expression[$pos - 1] === '\\')) {
                 if ($expression[$pos] === $quote) {
                     // end of quoted string

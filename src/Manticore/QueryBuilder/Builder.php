@@ -211,6 +211,18 @@ class Builder
     }
 
     /**
+     * A named parameter in the place of a value, see Query::param()
+     *
+     * @param string $name
+     *
+     * @return Expression
+     */
+    public static function param(string $name): Expression
+    {
+        return Query::param($name);
+    }
+
+    /**
      * Make a piece of text a literal of a full-text query, see Query::escapeMatch()
      *
      * @param string $text

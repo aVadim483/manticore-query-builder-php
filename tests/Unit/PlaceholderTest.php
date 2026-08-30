@@ -140,4 +140,29 @@ final class PlaceholderTest extends UnitTestCase
 
         $this->assertSame($source, mb_strtolower($sql));
     }
+
+    /**
+     * The parser reads the statement byte by byte, so a value written in a non-ASCII
+     * alphabet must survive the rewriting of the table name as it is
+     */
+    public function testNonAsciiValuesSurviveTheRewriting(): void
+    {
+        $sql = $this->query(null, [], ['prefix' => 'second_'])
+            ->sql("UPDATE ?products SET title='Привет, мир', qty=5 WHERE id=1")
+            ->toSql();
+
+        $this->assertSame("UPDATE second_products SET title='Привет, мир', qty=5 WHERE id=1", $sql);
+    }
+
+    public function testNonAsciiValuesSurviveTheRewritingOfASelect(): void
+    {
+        $sql = $this->query(null, [], ['prefix' => 'second_'])
+            ->sql("SELECT id, title FROM ?products WHERE title='Привет мир' ORDER BY id ASC LIMIT 10")
+            ->toSql();
+
+        $this->assertSame(
+            "SELECT id, title FROM second_products WHERE title='Привет мир' ORDER BY id ASC LIMIT 10",
+            $sql
+        );
+    }
 }

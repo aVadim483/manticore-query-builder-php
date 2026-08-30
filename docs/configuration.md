@@ -16,7 +16,7 @@ $config = [
             'port' => 9306,
             'username' => null,
             'password' => null,
-            'timeout' => 5,
+            'timeout' => 5, // seconds to wait for the connection to open
             'prefix' => 'test_', // prefix that will replace the placeholder "?<table_name>"
             'force_prefix' => false,
         ],

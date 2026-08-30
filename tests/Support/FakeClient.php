@@ -24,6 +24,15 @@ class FakeClient
     public $insertedId = 1;
 
     /**
+     * Rowsets a SELECT is answered with, the way PDOClient::select() hands them over:
+     * [0] the rows of the query itself, [$n + 1] the rows of the n-th facet.
+     * SHOW META is left empty, so that the answer carries no meta.
+     *
+     * @var array
+     */
+    public array $selectData = [];
+
+    /**
      * @param array<string, string>|null $columnTypes
      */
     public function __construct(?array $columnTypes = [])
@@ -62,6 +71,10 @@ class FakeClient
     public function select(string $query, ?array $params = []): array
     {
         $this->queries[] = $query;
+
+        if ($this->selectData && stripos(ltrim($query), 'SELECT') === 0) {
+            return ['data' => $this->selectData];
+        }
 
         return ['data' => []];
     }

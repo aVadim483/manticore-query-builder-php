@@ -2,6 +2,7 @@
 
 namespace avadim\Manticore\Tests\Unit;
 
+use avadim\Manticore\QueryBuilder\Query;
 use avadim\Manticore\Tests\Support\UnitTestCase;
 
 /**
@@ -460,12 +461,59 @@ final class WhereSqlTest extends UnitTestCase
         $this->assertSqlSame($query->toSql(), $query->toRawSql());
     }
 
-    public function testNamedParameterIsNotQuotedAsValue(): void
+    /**
+     * A value that reads as a placeholder is still a value: ":30" is a time someone typed,
+     * and passing it through would build a statement with a parameter that was never bound
+     */
+    public function testValueLookingLikeAParameterIsQuoted(): void
     {
-        // a value that looks like a placeholder is passed through, not quoted
         $this->assertSqlSame(
-            'SELECT * FROM products WHERE (country=:country)',
+            "SELECT * FROM products WHERE (country=':country')",
             $this->query()->where('country', ':country')->toSql()
         );
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE (time=':30')",
+            $this->query()->where('time', ':30')->toSql()
+        );
+    }
+
+    /**
+     * ... and a parameter in the place of a value is asked for explicitly
+     */
+    public function testParameterInThePlaceOfAValue(): void
+    {
+        $query = $this->query()->where('country', Query::param('country'))->bind([':country' => 'de']);
+
+        $this->assertSqlSame('SELECT * FROM products WHERE (country=:country)', $query->toSql());
+        $this->assertSqlSame('SELECT * FROM products WHERE (country=de)', $query->toRawSql());
+    }
+
+    public function testParameterTakesItsNameWithOrWithoutTheColon(): void
+    {
+        $this->assertSame(':country', (string)Query::param('country'));
+        $this->assertSame(':country', (string)Query::param(':country'));
+    }
+
+    /**
+     * A column named after a PHP function is a column: is_callable('time') is true, and
+     * taking that for a group of conditions called the function itself
+     */
+    public function testColumnNamedLikeAPhpFunction(): void
+    {
+        $this->assertSqlSame(
+            'SELECT * FROM products WHERE (time=30)',
+            $this->query()->where('time', 30)->toSql()
+        );
+        $this->assertSqlSame(
+            "SELECT * FROM products WHERE (date='2024-01-31')AND(key='a')AND(count>1)",
+            $this->query()->where('date', '2024-01-31')->where('key', 'a')->where('count', '>', 1)->toSql()
+        );
+    }
+
+    public function testParameterRefusesANameThatIsNotOne(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        Query::param('not a name');
     }
 }

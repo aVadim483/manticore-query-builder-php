@@ -52,7 +52,9 @@ class QueryCondition
             $argsCount = ($arg1 === null) ? 1 : (($arg2 === null) ? 2 : 3);
         }
 
-        if (is_callable($field)) {
+        // a string is a column name, never a callable: is_callable('time') is true, and taking
+        // that for a group of conditions made where('time', ..) call the PHP function instead
+        if (!is_string($field) && is_callable($field)) {
             $condition = new QueryConditionSet($bool, $level);
             $field($condition);
             // where($closure, 'NOT') is how whereNot() asks for the whole group to be negated

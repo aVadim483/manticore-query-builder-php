@@ -227,6 +227,23 @@ final class ParserTest extends TestCase
         $this->assertSame(['a', ' b'], Parser::explode(',', 'a, b'));
     }
 
+    /**
+     * The split walks the string byte by byte, so its length has to be counted in bytes:
+     * with mb_strlen() every non-ASCII character used to cut one byte off the tail
+     */
+    public function testExplodeKeepsEveryItemOfANonAsciiExpression(): void
+    {
+        $this->assertSame(
+            ['id', "'Привет, мир' as greeting", 'price'],
+            Parser::explode(',', "id, 'Привет, мир' as greeting, price", true)
+        );
+    }
+
+    public function testColumnListKeepsNonAsciiLiteralsWhole(): void
+    {
+        $this->assertSame(["title", "'Ёлка' as label"], Parser::columnList(["title, 'Ёлка' as label"]));
+    }
+
     public function testTrimRemovesWhitespaceAndExtraChars(): void
     {
         $this->assertSame('SELECT 1', Parser::trim("  SELECT 1;\n", ';'));

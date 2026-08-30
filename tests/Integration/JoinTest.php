@@ -148,4 +148,32 @@ final class JoinTest extends IntegrationTestCase
 
         $this->assertCount(1, $rows);
     }
+
+    /**
+     * A join gives one row per pair, so the id of the left table repeats itself as soon as the
+     * relation is one to many - and the rows must not be keyed by it, or all but the last one
+     * of every document would be dropped
+     */
+    public function testEveryRowOfAOneToManyJoinIsKept(): void
+    {
+        $tags = $this->createTable([
+            'gid' => 'integer',
+            'label' => 'text',
+        ], 'tags');
+        ManticoreDb::table($tags)->insert([
+            ['id' => 11, 'gid' => 1, 'label' => 'portable'],
+            ['id' => 12, 'gid' => 1, 'label' => 'sale'],
+            ['id' => 13, 'gid' => 1, 'label' => 'new'],
+        ]);
+
+        $rows = ManticoreDb::table($this->products)
+            ->join($tags, 'gid', 'gid')
+            ->where('id', 1)
+            ->get();
+
+        $this->assertCount(3, $rows);
+        $labels = array_column($rows, $tags . '.label');
+        sort($labels);
+        $this->assertSame(['new', 'portable', 'sale'], $labels);
+    }
 }
