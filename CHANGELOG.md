@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-09-04
+
+### Added
+
+* `Builder::forgetConnection(?string $name = null)` — drops one connection from the pool, so that
+  the next call for it opens a new one. Until now the only way to reach the pool was `init()`,
+  which is the reconfiguration of the whole builder: it replaces the config and drops the logger
+  along with every connection. A process that lives for one request never needs either; a queue
+  worker whose handle the server closed overnight, an Octane process handing the application to
+  the next request, or a test that wants the connection of the previous one gone needs exactly
+  this. No name means the default connection, the answer says whether there was one to forget, and
+  the object itself is not closed — whoever holds a reference goes on using it.
+
+  This is what `avadim/manticore-query-builder-laravel` builds `Manager::purge()` on.
+
 ## [2.2.0] - 2026-08-30
 
 A release of fixes, two of which change behaviour that was there before — see **Breaking**.

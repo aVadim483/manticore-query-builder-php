@@ -79,6 +79,30 @@ of the previous class.
 Note that the schema cache and the last `ResultSet` of a connection keep working with a subclassed
 query: `Connection::query()` hands both over to whatever class it builds.
 
+## Dropping a connection
+
+A connection is built once and kept in the pool of the builder, which is what makes the schema
+cache and the last `ResultSet` of it worth anything. In a process that lives for one request that
+is the whole story; in a queue worker, an Octane process or a scheduled command it is not - the
+handle of a connection idle since yesterday may be closed by the server, and a test may want the
+connection of the previous one gone.
+
+```php
+// the next call for it opens a new connection
+ManticoreDb::forgetConnection('second');
+
+// no name means the default connection
+ManticoreDb::forgetConnection();
+```
+
+It answers whether there was a connection of that name to forget; forgetting one that was never
+built, or is not in the config at all, is not an error. The object itself is not closed - whoever
+still holds a reference goes on using it, and the handle behind it is released when the last
+reference is gone.
+
+`init()` empties the pool as well, but it is the reconfiguration of the whole builder: it replaces
+the config and drops the logger with the connections.
+
 ## Statements and transactions
 
 ```php

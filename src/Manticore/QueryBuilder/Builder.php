@@ -137,6 +137,38 @@ class Builder
     }
 
     /**
+     * Drop a connection from the pool, so that the next call for it opens a new one.
+     *
+     * A long-living process needs this where a request-per-process one never does: the handle of
+     * a worker idle since yesterday is closed by the server, an Octane process hands the
+     * application over to the next request, a test wants the connection of the previous one gone.
+     * Until now the only way to reach the pool was init(), which throws away every connection and
+     * the logger with them.
+     *
+     * The object itself is not closed: whoever still holds a reference goes on using it, and the
+     * handle behind it is released when the last reference is gone. Forgetting a name that was
+     * never built, or is not in the config at all, is not an error.
+     *
+     * @param string|null $connectionName the default connection when no name is given
+     *
+     * @return bool whether there was a connection of that name to forget
+     */
+    public static function forgetConnection(?string $connectionName = null): bool
+    {
+        if (!$connectionName) {
+            $connectionName = self::$config['defaultConnection'] ?? 'default';
+        }
+
+        if (!isset(self::$connections[$connectionName])) {
+            return false;
+        }
+
+        unset(self::$connections[$connectionName]);
+
+        return true;
+    }
+
+    /**
      * Run an SQL statement and tell whether the server accepted it
      *
      * @param string $sql
