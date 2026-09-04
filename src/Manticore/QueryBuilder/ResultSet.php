@@ -71,6 +71,39 @@ class ResultSet
     }
 
     /**
+     * A result set of the given rows, as a SELECT of them would have been answered with.
+     *
+     * Whoever has rows and no server to get them from - a driver answering with nothing where the
+     * server was never asked, a test standing in for an answer - would otherwise have to write out
+     * the array the constructor reads, which is the shape of this class rather than of its API.
+     *
+     * @param array $rows
+     * @param array $meta what the answer says about itself, over the total the rows make
+     *
+     * @return self
+     */
+    public static function of(array $rows, array $meta = []): self
+    {
+        $rows = array_values($rows);
+
+        return new self([
+            'command' => 'SELECT',
+            'meta'    => $meta + ['total' => count($rows), 'total_found' => count($rows)],
+            'result'  => ['type' => 'array', 'data' => $rows],
+        ]);
+    }
+
+    /**
+     * An answer of no rows.
+     *
+     * @return self
+     */
+    public static function empty(): self
+    {
+        return self::of([]);
+    }
+
+    /**
      * @param string $name
      * @param mixed $value
      *

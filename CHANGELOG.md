@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-09-04
+
+### Added
+
+* `ResultSet::of(array $rows, array $meta = [])` and `ResultSet::empty()` — a result set built out
+  of rows rather than out of an answer of the server. Whoever has rows and no server to get them
+  from — a driver answering with nothing where the index is not there yet, a test standing in for
+  an answer — had to write out the array the constructor reads, which is the shape of the class
+  rather than of its API. What `meta` says wins over the total the rows themselves make, so a page
+  of a larger result can carry the total of it.
+
 ## [2.3.0] - 2026-09-04
 
 ### Added
@@ -130,6 +141,8 @@ A release of fixes, two of which change behaviour that was there before — see 
 
 For 1.x see the commit history: <https://github.com/aVadim483/manticore-query-builder-php/commits/main>
 
+[2.4.0]: https://github.com/aVadim483/manticore-query-builder-php/compare/v2.3.0...v2.4.0
+[2.3.0]: https://github.com/aVadim483/manticore-query-builder-php/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/aVadim483/manticore-query-builder-php/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/aVadim483/manticore-query-builder-php/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/aVadim483/manticore-query-builder-php/compare/v1.15.0...v2.0.0
