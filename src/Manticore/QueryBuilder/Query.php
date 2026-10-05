@@ -2689,6 +2689,18 @@ class Query
     }
 
     /**
+     * Complete a word or phrase using Buddy and a table with min_infix_len enabled.
+     * Options use the server names, e.g. fuzziness, append, prepend and layouts.
+     *
+     * @return array rows containing the suggested text in "query"
+     * @throws QueryErrorException when the server rejects the statement
+     */
+    public function callAutocomplete(string $text, ?array $options = []): array
+    {
+        return $this->_execCall('AUTOCOMPLETE', [$text, $this->_callTable()], $options);
+    }
+
+    /**
      * CALL QSUGGEST: the same as callSuggest(), for a phrase rather than a single word.
      *
      * Only the last word of the phrase is corrected, which is what a search box needs while
