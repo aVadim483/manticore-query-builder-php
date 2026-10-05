@@ -17,10 +17,11 @@ Query Builder для Manticore Search на PHP с синтаксисом в ст
 * множественные INSERT и REPLACE
 * поддержка MATCH() и многоуровневых WHERE в SELECT
 * фасетный поиск, JOIN двух таблиц и векторный поиск (KNN)
+* MVA-фильтры ANY/ALL и геопоиск: радиус, расстояние в результатах и сортировка
 * типы колонок применяются в обе стороны: значения PHP при записи, типы PHP при чтении
 * помощники из Laravel Query Builder: агрегаты, постраничные обходы, условное построение
   запроса, условия по датам, upsert и остальные
-* все CALL-команды сервера в виде методов: `callSuggest()`, `callQsuggest()`, `callKeywords()`,
+* CALL-помощники: `callAutocomplete()`, `callSuggest()`, `callQsuggest()`, `callKeywords()`,
   `callSnippets()` и `callPq()` (перколятивные запросы)
 * отвергнутое чтение бросает исключение, отвергнутая запись отвечает false или нулём и
   сохраняет причину
@@ -57,6 +58,7 @@ Query Builder для Manticore Search на PHP с синтаксисом в ст
 | `floatVector()`, `whereKnn()` | библиотека KNN | таблица не создастся: *knn library not loaded* |
 | `columnar()`, `columnEngine('columnar')`, `engine => 'columnar'` | библиотека Columnar | таблица не создастся: *columnar library not loaded* |
 | `rename()` | Manticore Buddy | сервер ответит синтаксической ошибкой |
+| `callAutocomplete()` | Manticore Buddy и инфиксы таблицы | сервер отвергнет вызов |
 
 Библиотеки KNN и Columnar входят в [Manticore Columnar Library](https://github.com/manticoresoftware/columnar);
 там же поставляется библиотека вторичных индексов — она ускоряет фильтрацию и на API никак не
@@ -204,6 +206,7 @@ Laravel.
 ```bash
 vendor/bin/phpunit --testsuite unit   # построение и разбор SQL, сервер не нужен
 vendor/bin/phpunit                    # плюс интеграционные тесты
+vendor/bin/phpunit --exclude-group buddy # без новых тестов автодополнения на сервере без Buddy
 ```
 
 Интеграционные тесты сами создают и удаляют свои таблицы на живом сервере. Если на

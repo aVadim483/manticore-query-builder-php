@@ -15,6 +15,8 @@ Jump To:
 * [Working with JSON attributes](#working-with-json-attributes)
 * [Searching for what a user typed](#searching-for-what-a-user-typed)
 * [Joining tables](#joining-tables)
+* [MVA conditions](#mva-conditions)
+* [Geographic search](#geographic-search)
 * [Vector search (KNN)](#vector-search-knn)
 * [Conditions on dates](#conditions-on-dates)
 * [Aggregates and single values](#aggregates-and-single-values)
@@ -489,6 +491,91 @@ What Manticore does not do, and neither does this method: table aliases, subquer
 (`joinSub()`), and any join condition other than equality — a different operator throws an
 `InvalidArgumentException` instead of reaching the server as a syntax error.
 
+## MVA conditions
+
+`whereMvaAny()` and `whereMvaAll()` build the server's `ANY(attribute)` and
+`ALL(attribute)` filters for `multi` and `multi64` attributes. They also work inside
+nested `where()` closures; each has `andWhereMva*()` and `orWhereMva*()` variants.
+
+```php
+// A scalar means equality; an array means IN.
+$rows = ManticoreDb::table('?products')->whereMvaAny('categories', 5)->get();
+$rows = ManticoreDb::table('?products')->whereMvaAny('categories', [5, 7])->get();
+
+// Every stored category belongs to this set, not necessarily every value in the set is stored.
+$rows = ManticoreDb::table('?products')->whereMvaAll('categories', [5, 7])->get();
+
+// No stored category is 5 or 7.
+$rows = ManticoreDb::table('?products')->whereMvaAll('categories', 'NOT IN', [5, 7])->get();
+
+$rows = ManticoreDb::table('?products')->where(function ($where) {
+    $where->whereMvaAny('categories', 'BETWEEN', [10, 20])
+        ->orWhereMvaAll('categories', '>=', 30);
+})->get();
+```
+
+Supported operators: `=`, `!=`, `<>`, `<`, `<=`, `>`, `>=`, `IN`, `NOT IN`,
+`BETWEEN`, `NOT BETWEEN`. Bounds require exactly two values. Values must be integers
+or decimal integer strings; strings avoid a lossy cast for large MVA64 values.
+Floating-point numbers, booleans, nulls and empty filter arrays are rejected with
+`InvalidArgumentException`. An empty stored attribute is left to the server's MVA semantics.
+Column names are plain identifiers, optionally qualified by a table; raw expressions are not accepted.
+
+For `[5]`, `ALL(categories) IN (5,7)` succeeds: this is not a “contains all requested
+categories” helper. To require both categories, chain two `whereMvaAny()` equality filters.
+Also distinguish `ANY(categories) NOT IN (5,7)` (at least one value outside the set)
+from `ALL(categories) NOT IN (5,7)` (all values outside it).
+Existing `whereAny()` / `whereAll()` continue to mean conditions across several columns.
+
+## Geographic search
+
+The geographic helpers use `GEODIST()`. Both stored coordinates and the query origin
+are in **degrees**, with latitude before longitude. Output units are `m` (default),
+`km` or `mi`. They require no additional server plugin.
+
+```php
+ManticoreDb::create('?places', function (SchemaTable $table) {
+    $table->text('title');
+    $table->float('lat');
+    $table->float('lon');
+});
+
+$rows = ManticoreDb::table('?places')
+    ->withDistance('lat', 'lon', 55.75, 37.6, 'km')
+    ->whereGeoDistance('lat', 'lon', 55.75, 37.6, 10, 'km')
+    ->orderByDistance('lat', 'lon', 55.75, 37.6, 'km')
+    ->get(['id', 'title']);
+// Each row includes _distance in kilometers; the radius is inclusive (<= 10).
+```
+
+| Method | Additional arguments after the two columns and origin coordinates |
+|---|---|
+| `withDistance()` | unit (`m`), result alias (`_distance`) |
+| `whereGeoDistance()` | radius, unit (`m`) |
+| `orderByDistance()` | unit (`m`), direction (`asc` or `desc`) |
+
+`withDistance()` adds a computed column and survives subsequent `select()` / `get()`
+column selection. Use an alias that does not collide with a real or selected column.
+Reserved aliases such as `id` and `_score` are rejected; reusing a distance alias for a
+different expression is rejected too. Different units can be selected under different aliases.
+
+Filtering or ordering alone uses a hidden computed column, removed from returned rows.
+Matching expressions reuse an existing visible or hidden alias. Put `withDistance()` first
+when combining the three helpers to select the expression only once. `orderByDistance()`
+appends to existing ordering; use `reorder()` first if distance must be the primary sort key.
+These helpers target SELECT queries; `whereGeoDistance()` is an AND condition on Query,
+not a method of the nested condition builder.
+
+JSON paths such as `location.lat` and `location.lon` are converted using `DOUBLE()`.
+For other expressions, pass an explicit `ManticoreDb::raw('DOUBLE(location.lat)')`;
+raw expressions are trusted SQL, not user input. Plain column/path arguments accept
+identifier segments separated by dots, without automatic table-prefix substitution.
+
+Invalid units, latitude outside [-90,90], longitude outside [-180,180], non-finite
+coordinates and negative or non-finite radii raise `InvalidArgumentException`.
+Zero radius is allowed. Distances are floating-point approximations, so boundary
+comparisons in application tests should account for precision.
+
 ## Vector search (KNN)
 
 KNN stands for *k-nearest neighbours*: instead of asking for the rows where a column equals
@@ -770,10 +857,34 @@ Facet methods you can use in a closure:
 
 ## The `CALL *` statements
 
-Five statements of Manticore work through the table without being a search of it: they are
-written as `CALL` and the builder wraps them as methods of the same name. All five answer with an
+The following Manticore commands work through a table: they are
+written as `CALL` and the builder wraps them as methods of the same name. These methods answer with an
 array of rows and throw `QueryErrorException` when the server rejects the statement, the same way
 a read does.
+
+### callAutocomplete()
+
+`callAutocomplete(string $text, ?array $options = []): array` executes
+`CALL AUTOCOMPLETE`. It requires **Manticore Buddy** and a table with infixes enabled,
+for example `min_infix_len=2`. Suggestions are rows with a string `query` field,
+including suggestions consisting entirely of digits.
+
+```php
+$rows = ManticoreDb::table('?products')->callAutocomplete('manti', [
+    'fuzziness' => 0,
+    'append' => true,
+]);
+// For a dictionary containing manticore: [['query' => 'manticore'], ...]
+```
+
+The options use the server names, including `fuzziness`, `append`, `prepend`, `preserve`,
+`expansion_len`, `layouts` (e.g. `us,ru`) and `force_bigrams`. Values are escaped and option
+names validated by the shared CALL implementation. The server validates supported options
+and their ranges. An empty response is `[]`; server errors raise `QueryErrorException`.
+
+Autocomplete completes input using the indexed dictionary; `callSuggest()` and
+`callQsuggest()` return spelling corrections. Do not assume a stable order among tied suggestions.
+See the [server documentation](https://manual.manticoresearch.com/Searching/Autocomplete).
 
 ### callSuggest()
 

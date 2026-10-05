@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+* `callAutocomplete()` wraps Buddy's `CALL AUTOCOMPLETE`, with escaped options and
+  suggestions returned as rows containing a string `query` field.
+* `whereMvaAny()` / `whereMvaAll()` and their AND/OR variants support scalar, set and
+  range comparisons on MVA attributes, including nested condition groups. Empty filter
+  arrays and non-integer values are rejected.
+* `withDistance()`, `whereGeoDistance()` and `orderByDistance()` support geographic
+  SELECT queries with coordinates in degrees and distances in meters, kilometers or
+  miles. Numeric attributes, JSON paths and explicit raw coordinate expressions are supported.
+
 ### Changed
 
 * CI now tests Manticore 29.9.0 on PHP 7.4 and 8.4, plus `latest` on PHP 8.4.

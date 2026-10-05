@@ -17,10 +17,11 @@ Features
 * Multiple INSERT and REPLACE
 * Support MATCH() and multi-level WHERE for SELECT
 * Support faceted search, JOIN of two tables and KNN vector search
+* MVA ANY/ALL filters and geographic radius searches, distance columns and sorting
 * Column types are applied in both directions: PHP values on write, PHP types on read
 * The helpers of the Laravel query builder: aggregates, chunked walks, conditional building,
   conditions on dates, upsert and the rest
-* Every CALL statement of the server as a method: `callSuggest()`, `callQsuggest()`,
+* CALL helpers: `callAutocomplete()`, `callSuggest()`, `callQsuggest()`,
   `callKeywords()`, `callSnippets()` and `callPq()` (percolate queries)
 * A rejected read throws, a rejected write answers with false or zero and keeps its reason
 * PSR-3 logging of queries and EXPLAIN of full-text expressions
@@ -56,6 +57,7 @@ loaded by the server, or on Manticore Buddy running next to it:
 | `floatVector()`, `whereKnn()` | KNN library | the table cannot be created: *knn library not loaded* |
 | `columnar()`, `columnEngine('columnar')`, `engine => 'columnar'` | Columnar library | the table cannot be created: *columnar library not loaded* |
 | `rename()` | Manticore Buddy | the server answers with a syntax error |
+| `callAutocomplete()` | Manticore Buddy and table infixes | the server rejects the call |
 
 The KNN and columnar libraries both come from the [Manticore Columnar Library](https://github.com/manticoresoftware/columnar);
 the secondary-index library ships with them and speeds filtering up without changing anything
@@ -187,6 +189,7 @@ More detailed documentation is available in the [/docs](/docs/README.md) folder:
 ```bash
 vendor/bin/phpunit --testsuite unit   # SQL building and parsing, no server needed
 vendor/bin/phpunit                    # adds the integration tests
+vendor/bin/phpunit --exclude-group buddy # omit new autocomplete tests on a server without Buddy
 ```
 
 The integration tests create and drop their own tables on a live server. They are skipped,
