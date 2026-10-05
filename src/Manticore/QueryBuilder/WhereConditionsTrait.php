@@ -12,6 +12,73 @@ namespace avadim\Manticore\QueryBuilder;
 trait WhereConditionsTrait
 {
     /**
+     * ANY(mva): at least one stored value satisfies the comparison.
+     * Two arguments mean equality for a scalar, IN for a non-empty array.
+     * Values are integers or decimal integer strings (including large MVA64 values).
+     */
+    public function whereMvaAny(string $column, $operator, $value = null): self
+    {
+        return $this->addMvaCondition('andWhere', 'ANY', $column, array_slice(func_get_args(), 1));
+    }
+
+    public function andWhereMvaAny(string $column, $operator, $value = null): self
+    {
+        return $this->whereMvaAny(...func_get_args());
+    }
+
+    public function orWhereMvaAny(string $column, $operator, $value = null): self
+    {
+        return $this->addMvaCondition('orWhere', 'ANY', $column, array_slice(func_get_args(), 1));
+    }
+
+    /**
+     * ALL(mva): every stored value satisfies the comparison. ALL(mva) IN (1,2)
+     * does not mean that the attribute contains both 1 and 2.
+     */
+    public function whereMvaAll(string $column, $operator, $value = null): self
+    {
+        return $this->addMvaCondition('andWhere', 'ALL', $column, array_slice(func_get_args(), 1));
+    }
+
+    public function andWhereMvaAll(string $column, $operator, $value = null): self
+    {
+        return $this->whereMvaAll(...func_get_args());
+    }
+
+    public function orWhereMvaAll(string $column, $operator, $value = null): self
+    {
+        return $this->addMvaCondition('orWhere', 'ALL', $column, array_slice(func_get_args(), 1));
+    }
+
+    private function addMvaCondition(string $method, string $quantifier, string $column, array $args): self
+    {
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?$/D', $column)) {
+            throw new \InvalidArgumentException('MVA needs an attribute name, optionally qualified by a table');
+        }
+        $value = count($args) === 1 ? $args[0] : $args[1];
+        $operator = count($args) === 1 ? (is_array($value) ? 'IN' : '=') : strtoupper(trim((string)$args[0]));
+        $set = in_array($operator, ['IN', 'NOT IN', 'BETWEEN', 'NOT BETWEEN'], true);
+        if (!$set && !in_array($operator, ['=', '!=', '<>', '>', '>=', '<', '<='], true)) {
+            throw new \InvalidArgumentException('Unsupported MVA comparison operator');
+        }
+        if ($set && (!is_array($value) || !$value)) {
+            throw new \InvalidArgumentException('MVA set and range comparisons need a non-empty array');
+        }
+        if (in_array($operator, ['BETWEEN', 'NOT BETWEEN'], true) && count($value) !== 2) {
+            throw new \InvalidArgumentException('MVA ranges need exactly two bounds');
+        }
+        foreach ($set ? $value : [$value] as $item) {
+            if (!is_int($item) && !(is_string($item) && preg_match('/^-?[0-9]+$/D', $item))) {
+                throw new \InvalidArgumentException('MVA values must be integers or decimal integer strings');
+            }
+        }
+        // Integer strings are safe numeric literals, without a lossy PHP integer cast.
+        $format = static function ($item) { return Query::raw((string)$item); };
+        $value = $set ? array_map($format, array_values($value)) : $format($value);
+        return $this->{$method}($quantifier . '(' . $column . ')', $operator, $value);
+    }
+
+    /**
      * @param $field
      *
      * @return $this
