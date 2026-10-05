@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.5.0] - 2026-10-05
 
 ### Added
 
@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * CI now tests Manticore 29.9.0 on PHP 7.4 and 8.4, plus `latest` on PHP 8.4.
   SQL, Columnar, KNN and Buddy must pass functional readiness probes before the full
-  suite runs; skipped and incomplete tests fail CI. Local test skipping is unchanged.
+  suite runs; skipped and incomplete tests fail CI. Existing local skips are unchanged;
+  autocomplete integration tests require Buddy and can be excluded with `--exclude-group buddy`.
 * The test workflow supports manual runs and retains JUnit reports and Manticore
   diagnostics as artifacts for 14 days, including failed runs.
 
@@ -162,6 +163,7 @@ A release of fixes, two of which change behaviour that was there before — see 
 
 For 1.x see the commit history: <https://github.com/aVadim483/manticore-query-builder-php/commits/main>
 
+[2.5.0]: https://github.com/aVadim483/manticore-query-builder-php/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/aVadim483/manticore-query-builder-php/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/aVadim483/manticore-query-builder-php/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/aVadim483/manticore-query-builder-php/compare/v2.1.0...v2.2.0
