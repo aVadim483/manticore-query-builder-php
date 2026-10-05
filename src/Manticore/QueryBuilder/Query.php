@@ -64,6 +64,9 @@ class Query
      */
     private array $exprColumns = [];
 
+    /** @var array<string, string> explicitly requested distance columns */
+    private array $distanceColumns = [];
+
     /** @var array joined tables: [['type' => 'INNER', 'table' => <real name>, 'on' => <condition>], ...] */
     private array $joins = [];
 
@@ -878,6 +881,85 @@ class Query
     }
 
     /**
+     * Include a distance column without replacing select(). Both stored coordinates and
+     * the origin are degrees, latitude first. Output units: m (default), km or mi.
+     * Coordinate columns can be identifiers, JSON paths or explicit raw Expressions.
+     */
+    public function withDistance($latitudeColumn, $longitudeColumn, float $latitude, float $longitude, string $unit = 'm', string $alias = '_distance'): Query
+    {
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/D', $alias)
+            || in_array($alias, ['id', '_score', '_knn_dist', '_highlight'], true)
+            || strpos($alias, '_expr') === 0) {
+            throw new \InvalidArgumentException('Invalid or reserved distance alias');
+        }
+        $expression = self::geoDistanceExpression($latitudeColumn, $longitudeColumn, $latitude, $longitude, $unit);
+        if (isset($this->distanceColumns[$alias]) && $this->distanceColumns[$alias] !== $expression) {
+            throw new \InvalidArgumentException('Distance alias already refers to another origin or unit');
+        }
+        $this->distanceColumns[$alias] = $expression;
+        return $this;
+    }
+
+    /** Filter by an inclusive radius. The internal distance column is omitted from rows. */
+    public function whereGeoDistance($latitudeColumn, $longitudeColumn, float $latitude, float $longitude, float $radius, string $unit = 'm'): Query
+    {
+        if (!is_finite($radius) || $radius < 0) {
+            throw new \InvalidArgumentException('Geo radius must be finite and non-negative');
+        }
+        $expression = self::geoDistanceExpression($latitudeColumn, $longitudeColumn, $latitude, $longitude, $unit);
+        return $this->where($this->geoDistanceAlias($expression), '<=', $radius);
+    }
+
+    /** Sort by distance; direction is asc by default. Existing ordering is preserved. */
+    public function orderByDistance($latitudeColumn, $longitudeColumn, float $latitude, float $longitude, string $unit = 'm', string $direction = 'asc'): Query
+    {
+        $direction = strtolower($direction);
+        if (!in_array($direction, ['asc', 'desc'], true)) {
+            throw new \InvalidArgumentException('Distance direction must be asc or desc');
+        }
+        $expression = self::geoDistanceExpression($latitudeColumn, $longitudeColumn, $latitude, $longitude, $unit);
+        return $this->orderBy($this->geoDistanceAlias($expression), $direction);
+    }
+
+    private function geoDistanceAlias(string $expression): string
+    {
+        // Reuse visible distances first, or an existing hidden expression for filter/order.
+        foreach ([$this->distanceColumns, $this->exprColumns] as $columns) {
+            $alias = array_search($expression, $columns, true);
+            if ($alias !== false) {
+                return $alias;
+            }
+        }
+        $alias = '_expr' . (count($this->exprColumns) + 1);
+        $this->exprColumns[$alias] = $expression;
+        return $alias;
+    }
+
+    private static function geoDistanceExpression($latitudeColumn, $longitudeColumn, float $latitude, float $longitude, string $unit): string
+    {
+        if (!is_finite($latitude) || abs($latitude) > 90 || !is_finite($longitude) || abs($longitude) > 180) {
+            throw new \InvalidArgumentException('Geo coordinates must be finite degrees: latitude [-90,90], longitude [-180,180]');
+        }
+        $unit = strtolower($unit);
+        if (!in_array($unit, ['m', 'km', 'mi'], true)) {
+            throw new \InvalidArgumentException('Geo distance unit must be m, km or mi');
+        }
+        $columns = [];
+        foreach ([$latitudeColumn, $longitudeColumn] as $column) {
+            if ($column instanceof Expression) {
+                $columns[] = (string)$column;
+            } elseif (is_string($column) && preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*$/D', $column)) {
+                // JSON numeric values need an explicit numeric cast in GEODIST.
+                $columns[] = strpos($column, '.') === false ? $column : 'DOUBLE(' . $column . ')';
+            } else {
+                throw new \InvalidArgumentException('Geo coordinate needs an attribute, JSON path or raw expression');
+            }
+        }
+        return 'GEODIST(' . implode(', ', $columns) . ', ' . self::quoteParam($latitude)
+            . ', ' . self::quoteParam($longitude) . ', {in=deg, out=' . $unit . '})';
+    }
+
+    /**
      * INNER JOIN another table.
      *
      *      table('?products')->join('?groups', 'products.gid', 'groups.id')
@@ -1300,6 +1382,10 @@ class Query
         }
 
         foreach ($this->exprColumns as $alias => $expression) {
+            $result .= ', ' . $expression . ' as ' . $alias;
+        }
+
+        foreach ($this->distanceColumns as $alias => $expression) {
             $result .= ', ' . $expression . ' as ' . $alias;
         }
 
