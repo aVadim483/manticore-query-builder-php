@@ -193,6 +193,19 @@ The integration tests create and drop their own tables on a live server. They ar
 not failed, when nothing listens on `MANTICORE_HOST:MANTICORE_PORT` (`127.0.0.1:9306`
 by default).
 
+GitHub Actions runs the full suite against Manticore 29.9.0 on PHP 7.4 and 8.4,
+plus a separate `latest` run on PHP 8.4. Before PHPUnit, `tests/ci/check-manticore.php`
+waits for working SQL, Columnar filtering, KNN search and a Buddy table rename,
+using temporary tables that it removes afterwards. Run this probe only against a test server.
+The readiness timeout defaults to 90 seconds (`MANTICORE_READY_TIMEOUT`, 1–120 seconds);
+the probe uses the same host and port environment variables as the integration tests.
+
+CI uses `--fail-on-skipped --fail-on-incomplete`: missing components cannot produce
+a successful full run. Local test skipping remains unchanged. JUnit reports, readiness
+output and container diagnostics are uploaded as artifacts, including on failure,
+and retained for 14 days. The workflow also supports manual runs from the Actions tab
+once the workflow is on the default branch. Both pinned-version and `latest` runs must pass.
+
 ## Want to support?
 
 If you find this package useful, just give me a star on [GitHub](https://github.com/aVadim483/manticore-query-builder-php) :)

@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Explicit bash enables pipefail, so tee cannot hide a failed readiness check.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   # The offline half of the suite: FakeClient stands in for the server, so this runs on every
@@ -11,6 +20,7 @@ jobs:
   unit:
     name: unit / PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
@@ -40,21 +50,38 @@ jobs:
         run: composer update --prefer-dist --no-progress --no-interaction
 
       - name: Run the unit tests
-        run: vendor/bin/phpunit --testsuite unit
+        run: |
+          mkdir -p build/ci
+          vendor/bin/phpunit --testsuite unit --fail-on-skipped --fail-on-incomplete --log-junit build/ci/junit.xml
+
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-php-${{ matrix.php }}
+          path: build/ci/
+          retention-days: 14
 
   # The half that needs a live server, on the two ends of the supported range
   integration:
-    name: integration / PHP ${{ matrix.php }}
+    name: integration / PHP ${{ matrix.php }} / Manticore ${{ matrix.manticore }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     strategy:
       fail-fast: false
       matrix:
-        php: ['7.4', '8.4']
+        include:
+          - php: '7.4'
+            manticore: '29.9.0'
+          - php: '8.4'
+            manticore: '29.9.0'
+          - php: '8.4'
+            manticore: latest
 
     services:
       manticore:
-        image: manticoresearch/manticore:latest
+        image: manticoresearch/manticore:${{ matrix.manticore }}
         ports:
           # the ports the tests expect by default, see MANTICORE_HOST/MANTICORE_PORT
           # in phpunit.xml
@@ -81,20 +108,33 @@ jobs:
       - name: Install the dependencies
         run: composer update --prefer-dist --no-progress --no-interaction
 
-      # the image promises no mysql or curl of its own, so the port is waited for from the
-      # outside rather than through a health check of the container
-      - name: Wait for Manticore
+      # Probe from the runner with PDO: an open TCP port does not mean Buddy or MCL is ready.
+      - name: Check SQL, Columnar, KNN and Buddy
+        timeout-minutes: 3
         run: |
-          for i in $(seq 1 60); do
-            (echo > /dev/tcp/127.0.0.1/9306) >/dev/null 2>&1 && exit 0
-            sleep 1
-          done
-          echo 'Manticore did not answer on 127.0.0.1:9306'
-          exit 1
+          mkdir -p build/ci
+          php tests/ci/check-manticore.php 2>&1 | tee build/ci/preflight.log
 
       # the whole suite here: the unit half is cheap and keeps this job self-contained
       - name: Run the tests
-        run: vendor/bin/phpunit
+        run: vendor/bin/phpunit --fail-on-skipped --fail-on-incomplete --log-junit build/ci/junit.xml
+
+      - name: Collect Manticore diagnostics
+        if: always()
+        env:
+          MANTICORE_CONTAINER: ${{ job.services.manticore.id }}
+        run: |
+          mkdir -p build/ci
+          docker logs --timestamps "$MANTICORE_CONTAINER" > build/ci/manticore.log 2>&1
+          docker inspect "$MANTICORE_CONTAINER" > build/ci/container.json
+
+      - name: Upload integration test report and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-php-${{ matrix.php }}-manticore-${{ matrix.manticore }}
+          path: build/ci/
+          retention-days: 14
 
   # TODO: a job against an older server would be worth having - the builder deliberately
   # supports the answers of Manticore before v6 (the "Index" column of SHOW TABLES, the
