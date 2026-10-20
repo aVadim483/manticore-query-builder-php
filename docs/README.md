@@ -26,8 +26,8 @@
 | Loaded metadata as an immutable object (2.6) | `ResultSet::metaObject(): Meta` |
 | Whether metadata was loaded (2.6) | `ResultSet::hasMeta(): bool` |
 
-Features marked 2.6 are available in `main` under [Unreleased](../CHANGELOG.md), not in the
-published 2.5.0 release. Existing defaults are preserved. See [searching](searching.md),
+Features marked 2.6 are available since [2.6.0](../CHANGELOG.md).
+Existing defaults are preserved. See [searching](searching.md),
 [ResultSet](result_set.md) and [writing](writing.md) for details.
 
 [Russian documentation](ru/README.md) and [quick start](../README.ru.md).

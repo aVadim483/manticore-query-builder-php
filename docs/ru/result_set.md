@@ -97,7 +97,7 @@ if (!ManticoreDb::table('?products')->insert(['title' => 'Laptop'])) {
 
 ### hasMeta(): bool и metaObject(): Meta
 
-Добавлены в готовящейся 2.6; доступны в `main` (раздел Unreleased).
+Доступны начиная с 2.6.0.
 
 `hasMeta()` сообщает, были ли загружены метаданные, включая пустой ответ SHOW META.
 `meta()` по-прежнему возвращает массив. `metaObject()` предоставляет объектный доступ

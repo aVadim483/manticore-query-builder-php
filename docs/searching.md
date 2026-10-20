@@ -28,7 +28,7 @@ Jump To:
 
 ## Rows without metadata
 
-The methods in this section are available in `main` for the upcoming 2.6 (Unreleased).
+The methods in this section are available since 2.6.0.
 
 `get()` and `search()` retrieve SHOW META automatically. Use `getRows()` for the same rows,
 column arguments, ID keys, type conversion and read errors as `get()`, with no SHOW META:

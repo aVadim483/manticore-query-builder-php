@@ -98,7 +98,7 @@ Returns the meta data received after SQL request
 
 ### hasMeta(): bool and metaObject(): Meta
 
-Added for the upcoming 2.6; available in `main` (Unreleased).
+Available since 2.6.0.
 
 `hasMeta()` tells whether metadata was loaded, including an empty SHOW META answer.
 `meta()` keeps returning an array. `metaObject()` provides read-only object access to the

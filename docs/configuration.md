@@ -4,7 +4,7 @@
 
 ## Configuration
 
-The optional connection setting `lazy_insert_ids` (upcoming 2.6, available in `main`) defaults to false. See
+The optional connection setting `lazy_insert_ids` (since 2.6.0) defaults to false. See
 [lazy insert IDs](writing.md#optional-lazy-ids-26) for its lifetime, errors and compatibility
 with custom clients. Other write methods continue to retrieve IDs immediately.
 

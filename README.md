@@ -25,7 +25,7 @@ Features
   `callKeywords()`, `callSnippets()` and `callPq()` (percolate queries)
 * A rejected read throws, a rejected write answers with false or zero and keeps its reason
 * PSR-3 logging of queries and EXPLAIN of full-text expressions
-* In the upcoming 2.6: rows without metadata via `getRows()`, an immutable `Meta` object,
+* Rows without metadata via `getRows()`, an immutable `Meta` object,
   and optional lazy retrieval of inserted IDs
 
 Manticore Search server documentation: https://manual.manticoresearch.com/
@@ -176,11 +176,10 @@ catch (\avadim\Manticore\QueryBuilder\QueryErrorException $e) {
 $rows = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get();
 ```
 
-## Upcoming 2.6: rows, metadata and insert IDs
+## 2.6: rows, metadata and insert IDs
 
-These additions are implemented in `main` and listed under [Unreleased](CHANGELOG.md).
-They are not part of the published 2.5.0 release. Existing method signatures and default
-execution behavior are preserved.
+Available since [2.6.0](CHANGELOG.md). Existing method signatures and default execution
+behavior are preserved.
 
 ```php
 $query = ManticoreDb::table('?products')->limit(20);
