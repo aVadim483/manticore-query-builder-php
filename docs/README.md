@@ -1,4 +1,4 @@
-**English** | [Русский](../README.ru.md)
+**English** | [Русский](ru/README.md)
 
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
@@ -8,10 +8,27 @@
 
 * [Configuration](configuration.md)
 * [Searching](searching.md)
-* [Inserting and replacing documents](writing.md) / [Вставка и замена документов](ru/writing.md)
+* [Inserting and replacing documents](writing.md)
 * [Create, Listing & Describe Tables](tables.md)
 * [ResultSet Class](result_set.md)
 * [Logging](logging.md)
+* [Testing and Buddy](testing.md)
 
-Документация на русском языке — в папке [ru](ru), начиная с [README.ru.md](../README.ru.md).
+## Choosing the result API
+
+| Need | Method |
+|---|---|
+| Rows with automatic metadata retrieval | `Query::get()` |
+| Rows and metadata in one result object | `Query::search()` |
+| Rows without SHOW META (2.6) | `Query::getRows()` |
+| Explicit current connection metadata (2.6) | `Query::getMeta(): Meta` |
+| Loaded metadata as an array | `ResultSet::meta(): array` |
+| Loaded metadata as an immutable object (2.6) | `ResultSet::metaObject(): Meta` |
+| Whether metadata was loaded (2.6) | `ResultSet::hasMeta(): bool` |
+
+Features marked 2.6 are available in `main` under [Unreleased](../CHANGELOG.md), not in the
+published 2.5.0 release. Existing defaults are preserved. See [searching](searching.md),
+[ResultSet](result_set.md) and [writing](writing.md) for details.
+
+[Russian documentation](ru/README.md) and [quick start](../README.ru.md).
 

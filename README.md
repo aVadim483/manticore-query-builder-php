@@ -3,7 +3,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/aVadim483/manticore-query-builder-php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
 [![Packagist Downloads](https://img.shields.io/packagist/dt/avadim/manticore-query-builder-php?color=%23aa00aa)](https://packagist.org/packages/avadim/manticore-query-builder-php)
 [![GitHub License](https://img.shields.io/github/license/aVadim483/manticore-query-builder-php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
-[![Static Badge](https://img.shields.io/badge/php-%3E%3D7.4-005fc7)](https://packagist.org/packages/avadim/manticore-query-builder-php)
+[![PHP](https://img.shields.io/badge/php-7.4%20%7C%20%3E%3D8.1-005fc7)](https://packagist.org/packages/avadim/manticore-query-builder-php)
 
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
@@ -25,13 +25,15 @@ Features
   `callKeywords()`, `callSnippets()` and `callPq()` (percolate queries)
 * A rejected read throws, a rejected write answers with false or zero and keeps its reason
 * PSR-3 logging of queries and EXPLAIN of full-text expressions
+* In the upcoming 2.6: rows without metadata via `getRows()`, an immutable `Meta` object,
+  and optional lazy retrieval of inserted IDs
 
 Manticore Search server documentation: https://manual.manticoresearch.com/
 
 ## Related packages
 
-This is the standalone builder: PHP and PDO are all it needs, and the two packages below are built
-on it.
+This builder works without a framework. Composer installs its PHP dependencies; the two
+packages below build on it.
 
 * [`avadim/manticore-query-builder-laravel`](https://github.com/aVadim483/manticore-query-builder-laravel) —
   the integration with Laravel and Lumen: a service provider, `config/manticore.php`, named
@@ -42,7 +44,8 @@ on it.
 
 ## Requirements
 
-* PHP 7.4 or above with the PDO extension
+* PHP 7.4 or PHP 8.1 and above (PHP 8.0 is excluded by the Composer constraint)
+* PHP extensions: JSON, mbstring, PDO and the PDO MySQL driver (`pdo_mysql`)
 * Manticore Search reachable over its SQL interface (port 9306 by default).
   The HTTP/JSON API is not used.
 
@@ -164,7 +167,7 @@ if (!ManticoreDb::table('?products')->insert($singleRow)) {
 try {
     $rows = ManticoreDb::table('?products')->where('nosuchcolumn', 1)->get();
 }
-catch (vadim\Manticore\QueryBuilder\QueryErrorException $e) {
+catch (\avadim\Manticore\QueryBuilder\QueryErrorException $e) {
     $error = $e->getMessage();
 }
 
@@ -172,6 +175,51 @@ catch (vadim\Manticore\QueryBuilder\QueryErrorException $e) {
 // ('info' as an array, 'categories' as int[], 'on_sale' as bool)
 $rows = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get();
 ```
+
+## Upcoming 2.6: rows, metadata and insert IDs
+
+These additions are implemented in `main` and listed under [Unreleased](CHANGELOG.md).
+They are not part of the published 2.5.0 release. Existing method signatures and default
+execution behavior are preserved.
+
+```php
+$query = ManticoreDb::table('?products')->limit(20);
+$rows = $query->getRows();       // no SHOW META
+$returned = count($rows);       // returned rows, not total matches
+$meta = $query->getMeta();      // optional explicit SHOW META, before another search
+$total = $meta->totalFound();   // also available as $meta['total_found']
+
+$result = $query->search();     // rows and metadata together
+$array = $result->meta();       // existing array API
+$object = $result->metaObject(); // object over loaded metadata, no SQL
+```
+
+`Meta` is read-only. Its accessors return `null` for absent values; `count($meta)` counts
+metadata fields. Enable `lazy_insert_ids` in the connection configuration to defer ID
+retrieval for boolean `insert()`/`replace()` until `lastResultSet()->result()`. Read pending
+IDs before any subsequent command on that connection. The setting defaults to false;
+`*GetId()` and `*ResultSet()` still retrieve IDs immediately.
+
+See [searching](docs/searching.md#rows-without-metadata), [ResultSet](docs/result_set.md)
+and [writing documents](docs/writing.md) for the complete contracts and examples.
+
+## Differences from Laravel Query Builder
+
+The API uses familiar Laravel syntax, with these differences:
+
+* Use `whereRegex()` for string attributes and `match()` / `whereMatch()` for full-text
+  fields instead of `whereLike()`.
+* `match()` accepts a query-language expression, unlike `whereFullText()`; process ordinary
+  user input with `escapeMatch()`.
+* `whereColumn()` and `distinct()` are not provided.
+* The `join()` / `leftJoin()` API builds equality joins without table aliases or `joinSub()`.
+* The builder has no dedicated UNION, subquery or row-locking methods. The server supports
+  limited [sub-selects](https://manual.manticoresearch.com/Searching/Sub-selects); a missing
+  builder method does not mean the server lacks the feature.
+
+The WHERE helpers, aggregates, chunked walks, conditional building, upsert, date conditions
+and transactions use Laravel-style syntax. Their server constraints and error behavior are
+documented separately; the API does not promise identical Laravel behavior.
 
 ## Documentation
 
@@ -181,6 +229,7 @@ More detailed documentation is available in the [/docs](/docs/README.md) folder:
 [inserting and replacing documents](/docs/writing.md),
 [tables](/docs/tables.md),
 [result set](/docs/result_set.md),
+[testing and Buddy](/docs/testing.md),
 [logging](/docs/logging.md).
 
 Документация на русском языке: [README.ru.md](README.ru.md) и папка [/docs/ru](/docs/ru).
@@ -190,7 +239,7 @@ More detailed documentation is available in the [/docs](/docs/README.md) folder:
 ```bash
 vendor/bin/phpunit --testsuite unit   # SQL building and parsing, no server needed
 vendor/bin/phpunit                    # adds the integration tests
-vendor/bin/phpunit --exclude-group buddy # omit new autocomplete tests on a server without Buddy
+vendor/bin/phpunit --exclude-group buddy # omit autocomplete tests; rename may still skip without Buddy
 ```
 
 The integration tests create and drop their own tables on a live server. They are skipped,
@@ -209,6 +258,10 @@ a successful full run. Local test skipping remains unchanged. JUnit reports, rea
 output and container diagnostics are uploaded as artifacts, including on failure,
 and retained for 14 days. The workflow also supports manual runs from the Actions tab
 once the workflow is on the default branch. Both pinned-version and `latest` runs must pass.
+
+The workflow runs on pushes to `main`, on pull requests, and manually. The unit matrix covers
+PHP 7.4 and 8.1–8.4. All Buddy-dependent tests are included in full CI runs. See the
+[testing guide](docs/testing.md) for Docker setup, readiness checks and targeted Buddy tests.
 
 ## Want to support?
 

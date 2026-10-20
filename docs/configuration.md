@@ -4,7 +4,7 @@
 
 ## Configuration
 
-The optional connection setting `lazy_insert_ids` defaults to false. See
+The optional connection setting `lazy_insert_ids` (upcoming 2.6, available in `main`) defaults to false. See
 [lazy insert IDs](writing.md#optional-lazy-ids-26) for its lifetime, errors and compatibility
 with custom clients. Other write methods continue to retrieve IDs immediately.
 
@@ -14,7 +14,7 @@ use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
 $config = [
     'defaultConnection' => 'default',
     'connections' => [
-        // Default connection which will be used with environment variables
+        // Default connection
         'default' => [
             'host' => 'localhost',
             'port' => 9306,
@@ -28,10 +28,8 @@ $config = [
 
         // Second connection with minimal settings
         'second'  => [
-            'hosts' => [
-                'host' => 'localhost',
-                'port' => 9306,
-            ],
+            'host' => 'localhost',
+            'port' => 9306,
         ],
 
     ],

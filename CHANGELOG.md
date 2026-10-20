@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `*ResultSet()` remain eager; legacy custom clients retain their existing execution path.
 * English and Russian guides cover INSERT/REPLACE, multi-row writes, structured values,
   returned IDs, errors, service queries, and the lifetime of deferred results.
+* Documentation includes the 2.6 API overview, PHP extension requirements, corrected named
+  connection examples, and a testing guide covering Docker, Buddy and the CI matrix.
 
 ## [2.5.0] - 2026-10-05
 

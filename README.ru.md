@@ -3,7 +3,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/aVadim483/manticore-query-builder-php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
 [![Packagist Downloads](https://img.shields.io/packagist/dt/avadim/manticore-query-builder-php?color=%23aa00aa)](https://packagist.org/packages/avadim/manticore-query-builder-php)
 [![GitHub License](https://img.shields.io/github/license/aVadim483/manticore-query-builder-php)](https://packagist.org/packages/avadim/manticore-query-builder-php)
-[![Static Badge](https://img.shields.io/badge/php-%3E%3D7.4-005fc7)](https://packagist.org/packages/avadim/manticore-query-builder-php)
+[![PHP](https://img.shields.io/badge/php-7.4%20%7C%20%3E%3D8.1-005fc7)](https://packagist.org/packages/avadim/manticore-query-builder-php)
 
 # Manticore Search Query Builder for PHP (неофициальный PHP-клиент)
 
@@ -26,13 +26,15 @@ Query Builder для Manticore Search на PHP с синтаксисом в ст
 * отвергнутое чтение бросает исключение, отвергнутая запись отвечает false или нулём и
   сохраняет причину
 * PSR-3 логирование запросов и EXPLAIN полнотекстовых выражений
+* в готовящейся 2.6: строки без метаданных через `getRows()`, объект `Meta`
+  и необязательное ленивое получение ID при записи
 
 Документация сервера Manticore Search: https://manual.manticoresearch.com/
 
 ## Смежные пакеты
 
-Это самостоятельный построитель запросов: ему нужны только PHP и PDO, а два пакета ниже
-построены на нём.
+Это самостоятельный построитель запросов без обязательного фреймворка. Composer устанавливает
+его PHP-зависимости, а два пакета ниже построены на нём.
 
 * [`avadim/manticore-query-builder-laravel`](https://github.com/aVadim483/manticore-query-builder-laravel) —
   интеграция с Laravel и Lumen: сервис-провайдер, `config/manticore.php`, именованные соединения,
@@ -43,7 +45,8 @@ Query Builder для Manticore Search на PHP с синтаксисом в ст
 
 ## Требования
 
-* PHP 7.4 и выше с расширением PDO
+* PHP 7.4 или PHP 8.1 и выше (PHP 8.0 исключён ограничением Composer)
+* Расширения PHP: JSON, mbstring, PDO и драйвер PDO MySQL (`pdo_mysql`)
 * Manticore Search, доступный по SQL-интерфейсу (по умолчанию порт 9306).
   HTTP/JSON API не используется.
 
@@ -174,6 +177,33 @@ catch (\avadim\Manticore\QueryBuilder\QueryErrorException $e) {
 $rows = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get();
 ```
 
+## Готовящаяся 2.6: строки, метаданные и ID записей
+
+Эти возможности реализованы в `main` и перечислены в разделе [Unreleased](CHANGELOG.md).
+В опубликованный релиз 2.5.0 они пока не входят. Сигнатуры существующих методов и поведение
+по умолчанию сохраняются.
+
+```php
+$query = ManticoreDb::table('?products')->limit(20);
+$rows = $query->getRows();       // без SHOW META
+$returned = count($rows);       // полученные строки, а не все совпадения
+$meta = $query->getMeta();      // необязательный явный SHOW META до следующего поиска
+$total = $meta->totalFound();   // доступен и как $meta['total_found']
+
+$result = $query->search();     // строки и метаданные вместе
+$array = $result->meta();       // прежний массив
+$object = $result->metaObject(); // объект над загруженными метаданными, без SQL
+```
+
+`Meta` доступен только для чтения. Его методы возвращают `null` для отсутствующих значений;
+`count($meta)` считает поля метаданных. Настройка соединения `lazy_insert_ids` откладывает
+получение ID для булевых `insert()`/`replace()` до `lastResultSet()->result()`. Получите
+отложенные ID до любой следующей команды на том же соединении. По умолчанию настройка
+выключена; `*GetId()` и `*ResultSet()` по-прежнему получают ID сразу.
+
+Полные контракты и примеры: [поиск](docs/ru/searching.md#чтение-без-метаданных),
+[ResultSet](docs/ru/result_set.md), [запись документов](docs/ru/writing.md).
+
 ## Чем отличается от Laravel Query Builder
 
 Синтаксис намеренно повторяет ларавелевский, но несколько вещей сервер Manticore делает иначе,
@@ -185,21 +215,25 @@ $rows = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 11
   выражение языка запросов. Пользовательский ввод нужно пропускать через `escapeMatch()`;
 * `whereColumn()` и `distinct()` невозможны: сервер не сравнивает колонку с колонкой в `WHERE`
   и не поддерживает `SELECT DISTINCT`;
-* `JOIN` есть, но без алиасов таблиц, без подзапросов и только по равенству;
-* `UNION`, подзапросы и блокировки строк сервером не поддерживаются.
+* API `join()` / `leftJoin()` строит соединения по равенству, без алиасов таблиц и `joinSub()`;
+* отдельные методы `UNION`, подзапросов и блокировок строк в билдере отсутствуют.
+  Сервер поддерживает ограниченные [sub-selects](https://manual.manticoresearch.com/Searching/Sub-selects),
+  поэтому отсутствие метода билдера не означает отсутствие возможности у сервера.
 
-Всё остальное — `where`-семейство, агрегаты, `chunk()` / `lazy()`, `when()` / `unless()`,
-`upsert()`, `updateOrInsert()`, условия по датам, транзакции — работает так же, как принято в
-Laravel.
+`where`-семейство, агрегаты, `chunk()` / `lazy()`, `when()` / `unless()`, `upsert()`,
+`updateOrInsert()`, условия по датам и транзакции используют знакомый синтаксис Laravel.
+Их серверные ограничения и обработка ошибок описаны в документации; полной идентичности
+поведения Laravel это не предполагает.
 
 ## Документация
 
-Подробная документация на русском — в папке [/docs/ru](/docs/ru):
+Подробная документация на русском — в [оглавлении](/docs/ru/README.md):
 [конфигурация](/docs/ru/configuration.md),
 [поиск](/docs/ru/searching.md),
 [вставка и замена документов](/docs/ru/writing.md),
 [таблицы](/docs/ru/tables.md),
 [ResultSet и ошибки](/docs/ru/result_set.md),
+[тестирование и Buddy](/docs/ru/testing.md),
 [логирование](/docs/ru/logging.md).
 
 ## Тесты
@@ -207,7 +241,7 @@ Laravel.
 ```bash
 vendor/bin/phpunit --testsuite unit   # построение и разбор SQL, сервер не нужен
 vendor/bin/phpunit                    # плюс интеграционные тесты
-vendor/bin/phpunit --exclude-group buddy # без новых тестов автодополнения на сервере без Buddy
+vendor/bin/phpunit --exclude-group buddy # без автодополнения; rename без Buddy может пропускаться
 ```
 
 Интеграционные тесты сами создают и удаляют свои таблицы на живом сервере. Если на
@@ -228,6 +262,11 @@ GitHub Actions запускает полный набор на Manticore 29.9.0 
 как артефакты на 14 дней, в том числе при ошибке. После попадания workflow в основную
 ветку его можно запускать вручную из вкладки Actions. Успешными должны быть прогоны
 и фиксированной версии, и `latest`.
+
+Workflow запускается при пуше в `main`, для pull request и вручную. Модульная матрица
+проверяет PHP 7.4 и 8.1–8.4. Полные прогоны CI включают все Buddy-тесты. Настройка Docker,
+проверка готовности и отдельный запуск Buddy-тестов описаны в
+[руководстве по тестированию](docs/ru/testing.md).
 
 ## Хотите поддержать?
 

@@ -28,6 +28,8 @@ Jump To:
 
 ## Rows without metadata
 
+The methods in this section are available in `main` for the upcoming 2.6 (Unreleased).
+
 `get()` and `search()` retrieve SHOW META automatically. Use `getRows()` for the same rows,
 column arguments, ID keys, type conversion and read errors as `get()`, with no SHOW META:
 
@@ -513,9 +515,10 @@ The rows of a join are handed over as a **plain list**, not as the dictionary ke
 document id that an ordinary SELECT answers with: a join gives one row per pair, so the id of
 the left table repeats itself as soon as the relation is one to many.
 
-What Manticore does not do, and neither does this method: table aliases, subqueries
-(`joinSub()`), and any join condition other than equality — a different operator throws an
-`InvalidArgumentException` instead of reaching the server as a syntax error.
+The builder's JOIN API does not expose table aliases or `joinSub()`. It only accepts equality
+conditions; another operator throws `InvalidArgumentException` before execution. These are
+the contracts of this API, not a complete list of server capabilities. The server's limited
+[sub-select support](https://manual.manticoresearch.com/Searching/Sub-selects) is a separate feature.
 
 ## MVA conditions
 

@@ -61,7 +61,7 @@ Returns a command ('SELECT', 'INSERT', 'SHOW TABLES', etc)
 Returns SQL query
 
 ### execTime(): ?float
-Returns execution time
+Returns client execution time measured by the builder, not the server's `meta()['time']`.
 
 ### error(): ?string
 Returns text of error or warning of last query
@@ -81,10 +81,14 @@ Collection of rows
 Returns array of columns names
 
 ### count(): int
-Returns count of result rows
+Returns the server's `total` metadata field. This differs from `Query::count()`, which runs
+a separate COUNT query. Use `count($rows)` to count a returned PHP array directly.
 
 ### total(): int
-Returns total number of rows that match the condition in table
+Returns the server's `total_found` metadata field: an estimate of matches, or groups for
+grouped queries. It is not necessarily an exact document count. Both count accessors return
+0 when their fields are absent; use `hasMeta()` or nullable `Meta` accessors to identify
+unavailable metadata.
 
 ### first(): array
 Returns the first row of rows set
@@ -93,6 +97,8 @@ Returns the first row of rows set
 Returns the meta data received after SQL request
 
 ### hasMeta(): bool and metaObject(): Meta
+
+Added for the upcoming 2.6; available in `main` (Unreleased).
 
 `hasMeta()` tells whether metadata was loaded, including an empty SHOW META answer.
 `meta()` keeps returning an array. `metaObject()` provides read-only object access to the
