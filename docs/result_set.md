@@ -11,7 +11,8 @@ A read-only model of the answer to a single query. ```search()```, ```create()``
 
 ```insert()```, ```update()```, ```delete()``` and ```replace()``` answer the way the Laravel
 query builder does - with a flag and a number - so their ResultSet has to be asked for
-separately. There are two ways to do it, and they run exactly the same statement:
+separately. There are two ways to get the result of the same write; service queries may also
+run. See [inserting and replacing documents](writing.md) for examples and optional lazy IDs:
 
 ```php
 // 1. the *ResultSet() twin of the method
@@ -90,6 +91,34 @@ Returns the first row of rows set
 
 ### meta(): array
 Returns the meta data received after SQL request
+
+### hasMeta(): bool and metaObject(): Meta
+
+`hasMeta()` tells whether metadata was loaded, including an empty SHOW META answer.
+`meta()` keeps returning an array. `metaObject()` provides read-only object access to the
+already loaded values and never runs SQL:
+
+```php
+$result = ManticoreDb::table('products')->search();
+$meta = $result->metaObject();
+$total = $meta['total_found'];
+$total = $meta->totalFound();
+$returned = $meta->total();
+$seconds = $meta->time();
+$array = $meta->toArray();
+```
+
+`Meta` supports `isset()`, `foreach` and `count()`. `count($meta)` is the number of metadata
+fields, not documents. Typed accessors return `null` for missing fields; a missing key also
+returns `null`. Writing or removing fields throws `LogicException`. Unknown server fields
+remain accessible by key. `total_found` is a server estimate and can count groups for grouped
+queries; see [SHOW META](https://manual.manticoresearch.com/Node_info_and_management/SHOW_META?static=true).
+
+After `getRows()`, `hasMeta()` is false and `meta()` is empty. The legacy `count()` and
+`total()` accessors still return 0 when their metadata fields are absent; these zeros are
+not known totals. Use `count($rows)` for the returned row count and the separate `getMeta()`
+for server metadata. `metaObject()->totalFound()` returns `null` when the value is unknown.
+See [rows without metadata](searching.md#rows-without-metadata).
 
 ### facets(): array
 Returns facets

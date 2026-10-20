@@ -178,6 +178,7 @@ $rows = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 11
 More detailed documentation is available in the [/docs](/docs/README.md) folder:
 [configuration](/docs/configuration.md),
 [searching](/docs/searching.md),
+[inserting and replacing documents](/docs/writing.md),
 [tables](/docs/tables.md),
 [result set](/docs/result_set.md),
 [logging](/docs/logging.md).

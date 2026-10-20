@@ -4,6 +4,7 @@
 
 Jump To:
 * [Retrieving Rows From A Table](#retrieving-rows-from-a-table)
+* [Rows without metadata](#rows-without-metadata)
 * [Retrieving a single row or column from a table](#retrieving-a-single-row-or-column-from-a-table)
 * [Select statements](#select-statements)
 * [The MATCH clauses](#the-match-clauses)
@@ -24,6 +25,31 @@ Jump To:
 * [Conditional building](#conditional-building)
 * [Faceted search](#faceted-search)
 * [The `CALL *` statements](#the-call--statements)
+
+## Rows without metadata
+
+`get()` and `search()` retrieve SHOW META automatically. Use `getRows()` for the same rows,
+column arguments, ID keys, type conversion and read errors as `get()`, with no SHOW META:
+
+```php
+$query = ManticoreDb::table('products')->orderBy('id')->limit(20);
+$rows = $query->getRows(['id', 'title']);
+$returned = count($rows);
+$meta = $query->getMeta(); // optional, explicit SHOW META on the same connection
+$total = $meta->totalFound();
+```
+
+Schema lookups needed for casting run before this SELECT. With a warm schema cache,
+`getRows()` uses one server statement instead of SELECT plus SHOW META. It affects only
+this call; a subsequent `get()`/`search()` still loads metadata.
+
+Call `getMeta()` before another search or a command that can replace the metadata on this
+connection. It reads the current server state, not the history of a saved ResultSet. Another
+query object on the same connection shares this state; another connection does not.
+`getMeta()` returns a read-only [Meta object](result_set.md#hasmeta-bool-and-metaobject-meta)
+and throws `QueryErrorException` on failure. Like other service commands, it updates
+`lastResultSet()` to the SHOW META result; it does not populate the saved rows result.
+If you need a self-contained answer with rows and metadata, use `search()`.
 
 ## Retrieving rows from a table
 

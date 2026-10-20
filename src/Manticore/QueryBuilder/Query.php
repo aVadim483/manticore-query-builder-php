@@ -78,6 +78,8 @@ class Query
     private array $facets = [];
     private array $highlight = [];
     private array $params = [];
+    private bool $skipMeta = false;
+    private bool $deferInsertId = false;
     private bool $ifNotExists = false;
 
     private QueryConditionSet $conditions;
@@ -419,9 +421,21 @@ class Query
             // LAST_INSERT_ID(), so the id of the written row is there to be picked up - both
             // the generated one and the explicit one, and a list of them for a set of rows
             if ($parsedSql['command'] === 'INSERT' || $parsedSql['command'] === 'REPLACE') {
-                $response = $this->client->insert($parsedSql['query'], $this->params);
+                if ($this->deferInsertId && $this->client instanceof PDOClient
+                    && $this->client->supportsDeferredInsert()) {
+                    $response = $this->client->insertDeferred($parsedSql['query'], $this->params);
+                    $result['id_loader'] = $response['id_loader'];
+                    unset($response['id_loader']);
+                }
+                else {
+                    $response = $this->client->insert($parsedSql['query'], $this->params);
+                }
             }
             elseif ($parsedSql['command'] === 'SELECT') {
+                if ($this->skipMeta) {
+                    // Casting must not run DESCRIBE after the search: getMeta() is called later.
+                    $this->columnTypes();
+                }
                 $query = $this->_needScore()
                     ? 'SELECT weight() as _score, ' . substr($parsedSql['query'], 6)
                     : $parsedSql['query'];
@@ -499,21 +513,9 @@ class Query
                         ];
                     }
                 }
-                $meta = $this->client->select('SHOW META');
-                $result['meta'] = [];
-                // an answer without a rowset leaves meta empty rather than raising a warning
-                // that _execQuery() would catch and report as a failed query
-                foreach ($meta['data'][0] ?? [] as $item) {
-                    if ($item['Variable_name'] === 'time') {
-                        $value = (float)$item['Value'];
-                    }
-                    elseif ($item['Variable_name'] === 'total' || $item['Variable_name'] === 'total_found' || in_array(substr($item['Variable_name'], 0, 5), ['docs[', 'hits['])) {
-                        $value = (int)$item['Value'];
-                    }
-                    else {
-                        $value = $item['Value'];
-                    }
-                    $result['meta'][$item['Variable_name']] = $value;
+                if (!$this->skipMeta) {
+                    $meta = $this->client->select('SHOW META');
+                    $result['meta'] = Meta::fromRows($meta['data'][0] ?? [])->toArray();
                 }
             }
             elseif ($parsedSql['command'] === 'UPDATE') {
@@ -568,6 +570,8 @@ class Query
 
         $result['total_time'] = microtime(true) - $time;
         $resultSet = $this->_resultSet($result, $status);
+        // Do not hand loggers a callback retaining the live database client.
+        unset($result['id_loader']);
         $this->log('debug', 'Manticore Result:', $result);
 
         return $resultSet;
@@ -3151,7 +3155,7 @@ class Query
      */
     protected function _columnTypesOf(string $tableName): array
     {
-        if (empty($this->indexPool[$tableName]['columnsType'])) {
+        if (!isset($this->indexPool[$tableName]['columnsType'])) {
             $types = [];
             if (empty($this->indexPool[$tableName]['describe'])) {
                 $this->indexPool[$tableName]['describe'] = $this->_describeTable($tableName);
@@ -3257,6 +3261,30 @@ class Query
         }
 
         return $this->_execRead()->result();
+    }
+
+    /** Same rows as get(), without SHOW META. The mode lasts for this call only. */
+    public function getRows($columns = '*', ...$more)
+    {
+        $previous = $this->skipMeta;
+        $this->skipMeta = true;
+        try {
+            return func_num_args() ? $this->get($columns, ...$more) : $this->get();
+        }
+        finally {
+            $this->skipMeta = $previous;
+        }
+    }
+
+    /** Current metadata on this connection; also becomes its last service ResultSet. */
+    public function getMeta(): Meta
+    {
+        $result = $this->_execQuery(['command' => 'SHOW META', 'query' => 'SHOW META']);
+        if (!$result->success()) {
+            throw new QueryErrorException((string)$result->error(), $result->sqlQuery());
+        }
+
+        return Meta::fromRows($result->result() ?: []);
     }
 
     /**
@@ -3714,7 +3742,14 @@ class Query
      */
     public function insert(array $data, ?int $id = 0): bool
     {
-        return $this->insertResultSet($data, $id)->success();
+        $previous = $this->deferInsertId;
+        $this->deferInsertId = !empty($this->config['lazy_insert_ids']);
+        try {
+            return $this->insertResultSet($data, $id)->success();
+        }
+        finally {
+            $this->deferInsertId = $previous;
+        }
     }
 
     /**
@@ -3939,7 +3974,14 @@ class Query
      */
     public function replace(array $data, ?int $id = 0): bool
     {
-        return $this->replaceResultSet($data, $id)->success();
+        $previous = $this->deferInsertId;
+        $this->deferInsertId = !empty($this->config['lazy_insert_ids']);
+        try {
+            return $this->replaceResultSet($data, $id)->success();
+        }
+        finally {
+            $this->deferInsertId = $previous;
+        }
     }
 
     /**

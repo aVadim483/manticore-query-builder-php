@@ -8,6 +8,7 @@
 
 * [Configuration](configuration.md)
 * [Searching](searching.md)
+* [Inserting and replacing documents](writing.md) / [Вставка и замена документов](ru/writing.md)
 * [Create, Listing & Describe Tables](tables.md)
 * [ResultSet Class](result_set.md)
 * [Logging](logging.md)

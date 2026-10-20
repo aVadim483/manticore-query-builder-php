@@ -4,6 +4,10 @@
 
 ## Configuration
 
+The optional connection setting `lazy_insert_ids` defaults to false. See
+[lazy insert IDs](writing.md#optional-lazy-ids-26) for its lifetime, errors and compatibility
+with custom clients. Other write methods continue to retrieve IDs immediately.
+
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
 
@@ -19,6 +23,7 @@ $config = [
             'timeout' => 5, // seconds to wait for the connection to open
             'prefix' => 'test_', // prefix that will replace the placeholder "?<table_name>"
             'force_prefix' => false,
+            'lazy_insert_ids' => false, // opt in to deferred IDs for boolean insert()/replace()
         ],
 
         // Second connection with minimal settings

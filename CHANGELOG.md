@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+* `getRows()` returns the same rows as `get()` without `SHOW META`. Schema lookups run
+  before the search so its metadata remains available for an explicit `getMeta()` call.
+* `getMeta()` returns current connection metadata as an immutable `Meta` object with
+  array access, typed `totalFound()`, `total()` and `time()` methods, iteration and `toArray()`.
+* `ResultSet::metaObject()` exposes already loaded metadata as `Meta`, and `hasMeta()`
+  distinguishes missing metadata. Existing `meta(): array` is unchanged.
+* Optional `lazy_insert_ids` connection setting defers ID retrieval for boolean `insert()`
+  and `replace()` until `lastResultSet()->result()`. Pending IDs expire on the next command
+  on the same client; stale results throw rather than return another write's IDs. ID retrieval
+  errors are cached and thrown separately from write success. Default writes, `*GetId()` and
+  `*ResultSet()` remain eager; legacy custom clients retain their existing execution path.
+* English and Russian guides cover INSERT/REPLACE, multi-row writes, structured values,
+  returned IDs, errors, service queries, and the lifetime of deferred results.
+
 ## [2.5.0] - 2026-10-05
 
 ### Added

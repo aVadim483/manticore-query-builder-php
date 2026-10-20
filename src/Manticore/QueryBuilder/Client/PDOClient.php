@@ -11,6 +11,7 @@ class PDOClient
     private array $config;
     private string $dsn;
     private \PDO $dbh;
+    private int $statementVersion = 0;
 
     /**
      * @param array|null $config
@@ -99,6 +100,8 @@ class PDOClient
      */
     protected function prepare(string $query, ?array $params = []): \PDOStatement
     {
+        // Conservatively expire pending IDs on every new statement, including raw SQL.
+        ++$this->statementVersion;
         $stm = $this->dbh->prepare($query);
         if (!$stm) {
             $this->error($query, $this->dbh->errorInfo());
@@ -180,20 +183,53 @@ class PDOClient
         $result = ['data' => null];
         $stm = $this->prepare($query, $params);
         if ($stm->execute()) {
-            $idStatement = $this->dbh->query('SELECT LAST_INSERT_ID()');
-            if (!$idStatement) {
-                $this->error('SELECT LAST_INSERT_ID()', $this->dbh->errorInfo());
-            }
-            if (($rows = $idStatement->fetch()) && !empty($rows[0])) {
-                $id = array_map('intval', explode(',', $rows[0]));
-                $result['data'] = (count($id) === 1) ? reset($id) : $id;
-            }
+            $result['data'] = $this->fetchInsertIds();
         }
         else {
             $this->error($query, $stm->errorInfo());
         }
 
         return $result;
+    }
+
+    /** Subclasses opt in explicitly to avoid bypassing an overridden insert(). */
+    public function supportsDeferredInsert(): bool
+    {
+        return get_class($this) === self::class;
+    }
+
+    /** Execute a write and hand its result a connection-bound, expiring ID loader. */
+    public function insertDeferred(string $query, ?array $params = []): array
+    {
+        $stm = $this->prepare($query, $params);
+        if (!$stm->execute()) {
+            $this->error($query, $stm->errorInfo());
+        }
+        $version = $this->statementVersion;
+
+        return ['data' => null, 'id_loader' => function () use ($version) {
+            if ($version !== $this->statementVersion) {
+                throw new \LogicException('Deferred insert IDs expired after another statement on this connection.');
+            }
+
+            return $this->fetchInsertIds();
+        }];
+    }
+
+    /** @return int|int[]|null */
+    private function fetchInsertIds()
+    {
+        $statement = $this->dbh->query('SELECT LAST_INSERT_ID()');
+        if (!$statement) {
+            $this->error('SELECT LAST_INSERT_ID()', $this->dbh->errorInfo());
+        }
+        $rows = $statement->fetch(\PDO::FETCH_NUM);
+        if (!$rows || empty($rows[0])) {
+            return null;
+        }
+        $ids = array_map('intval', explode(',', (string)$rows[0]));
+
+        return count($ids) === 1 ? reset($ids) : $ids;
     }
 
 }

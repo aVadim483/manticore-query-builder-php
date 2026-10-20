@@ -13,6 +13,9 @@ class ResultSet
     private ?string $error = null;
     private ?float $execTime;
     private array $meta;
+    private bool $metaAvailable;
+    private $idLoader = null;
+    private ?\Throwable $idError = null;
     private array $facets;
 
     private string $resultType;
@@ -31,6 +34,8 @@ class ResultSet
         $this->sqlQuery = $data['query'] ?? null;
         $this->execTime = $data['exec_time'] ?? null;
         $this->meta = $data['meta'] ?? [];
+        $this->metaAvailable = array_key_exists('meta', $data);
+        $this->idLoader = $data['id_loader'] ?? null;
         $this->facets = $data['facets'] ?? [];
 
         $this->resultType = $data['result']['type'] ?? '';
@@ -169,6 +174,21 @@ class ResultSet
      */
     public function result()
     {
+        if ($this->idError !== null) {
+            throw $this->idError;
+        }
+        if ($this->idLoader !== null) {
+            $loader = $this->idLoader;
+            $this->idLoader = null;
+            try {
+                $this->resultData = $loader();
+            }
+            catch (\Throwable $e) {
+                // The write succeeded; only retrieving its ID failed. Never repeat the write.
+                $this->idError = $e;
+                throw $e;
+            }
+        }
         return $this->resultData;
     }
 
@@ -221,6 +241,17 @@ class ResultSet
         return $this->meta ?? [];
     }
 
+    public function hasMeta(): bool
+    {
+        return $this->metaAvailable;
+    }
+
+    /** Already loaded metadata; never executes SQL. */
+    public function metaObject(): Meta
+    {
+        return new Meta($this->meta);
+    }
+
     /**
      * Returns facets
      *
@@ -245,6 +276,8 @@ class ResultSet
      */
     public function setResult(string $type, $data)
     {
+        $this->idLoader = null;
+        $this->idError = null;
         $this->resultType = $type;
         $this->resultData = $data;
     }

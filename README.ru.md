@@ -197,6 +197,7 @@ Laravel.
 Подробная документация на русском — в папке [/docs/ru](/docs/ru):
 [конфигурация](/docs/ru/configuration.md),
 [поиск](/docs/ru/searching.md),
+[вставка и замена документов](/docs/ru/writing.md),
 [таблицы](/docs/ru/tables.md),
 [ResultSet и ошибки](/docs/ru/result_set.md),
 [логирование](/docs/ru/logging.md).
