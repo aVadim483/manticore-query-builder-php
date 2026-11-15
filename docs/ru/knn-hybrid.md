@@ -100,6 +100,30 @@ JOIN, группировки, фасетов, подсветки, видимых
 ID вне диапазона int PHP возвращаются точными десятичными строками через отдельный
 строковый SQL-алиас, без потери точности в PDO.
 
+## Экспорт результата
+
+`HybridResult::toArray()` возвращает `hits`, `window_total`, `total_found`,
+`text_meta` и `vector_meta`. Каждый элемент `hits` сохраняет формат существующего
+`HybridHit::toArray()`: `id`, `document`, `score`, `textRank`, `vectorRank`,
+`textScore` и `distance`. Метаданные — массив, в том числе пустой, если они загружены,
+либо null, если недоступны. У пустого результата `hits` пуст и размер окна равен
+нулю; `total_found` всегда null. Опции поиска и повторный список документов не включены.
+
+Оба класса реализуют `JsonSerializable` с тем же представлением:
+
+```php
+$array = $result->toArray();
+$json = json_encode($result, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+$hitJson = json_encode($result->firstHit(), JSON_THROW_ON_ERROR);
+```
+
+Экспорт не выполняет SQL и не меняет результат или `lastResultSet()`.
+Типы ID соответствуют PHP API: значения больше `PHP_INT_MAX` остаются строками.
+Клиент должен сохранять точность и для числовых ID. Флаги и ошибки кодирования JSON
+контролирует вызывающий код; некорректный текст не заменяется молча.
+
+## Страницы окна и выполнение
+
 `windowTotal()` и `count($result)` считают объединённое окно кандидатов.
 `totalFound()` возвращает null: общий размер объединённой выдачи неизвестен.
 `textMeta()` и `vectorMeta()` дают сохранённые метаданные сервера либо null для

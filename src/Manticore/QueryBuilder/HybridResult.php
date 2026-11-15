@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace avadim\Manticore\QueryBuilder;
 
 /** Materialized candidate window. Its size is not the global union total. */
-final class HybridResult implements \Countable, \IteratorAggregate
+final class HybridResult implements \Countable, \IteratorAggregate, \JsonSerializable
 {
     /** @var HybridHit[] */
     private array $hits;
@@ -123,6 +123,23 @@ final class HybridResult implements \Countable, \IteratorAggregate
     public function vectorMeta(): ?Meta { return $this->vectorMeta; }
     public function options(): array { return $this->options; }
     public function getIterator(): \Traversable { return new \ArrayIterator($this->hits); }
+
+    /** Export ranked hits and captured metadata without executing another query. */
+    public function toArray(): array
+    {
+        return [
+            'hits' => array_map(static function (HybridHit $hit): array { return $hit->toArray(); }, $this->hits),
+            'window_total' => $this->windowTotal(),
+            'total_found' => null,
+            'text_meta' => $this->textMeta !== null ? $this->textMeta->toArray() : null,
+            'vector_meta' => $this->vectorMeta !== null ? $this->vectorMeta->toArray() : null,
+        ];
+    }
+
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
+    }
 
     /** A page of the materialized window, with no additional SQL or global total. */
     public function paginateWindow(int $perPage = 20, int $page = 1): array

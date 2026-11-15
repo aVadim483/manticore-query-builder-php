@@ -100,6 +100,30 @@ zero. Text-branch document fields win for overlapping IDs. Equal fused scores so
 by unsigned numeric ID ascending. IDs outside PHP's integer range are returned as
 exact decimal strings, using an independent SQL string transport alias.
 
+## Exporting the result
+
+`HybridResult::toArray()` returns `hits`, `window_total`, `total_found`,
+`text_meta` and `vector_meta`. Each hit uses the existing `HybridHit::toArray()`
+shape: `id`, `document`, `score`, `textRank`, `vectorRank`, `textScore` and `distance`.
+Metadata is an array when captured (possibly empty), or null when unavailable.
+An empty result has an empty `hits` list and a window size of zero; `total_found`
+remains null. Search options and duplicate document lists are not included.
+
+Both result classes implement `JsonSerializable` with the same array representation:
+
+```php
+$array = $result->toArray();
+$json = json_encode($result, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+$hitJson = json_encode($result->firstHit(), JSON_THROW_ON_ERROR);
+```
+
+Export performs no SQL and does not change the result or `lastResultSet()`.
+ID types follow the PHP API: values above `PHP_INT_MAX` remain decimal strings.
+Consumers must also preserve precision for numeric IDs. JSON flags and encoding
+errors remain controlled by the caller; invalid text is not silently replaced.
+
+## Window pagination and execution
+
 `windowTotal()` and `count($result)` count the materialized union window.
 `totalFound()` is null: the global union total is unknown. `textMeta()` and
 `vectorMeta()` expose captured server metadata, or null for an absent branch.

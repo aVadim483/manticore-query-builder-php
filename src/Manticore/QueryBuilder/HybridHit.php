@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace avadim\Manticore\QueryBuilder;
 
 /** One document in a bounded reciprocal-rank-fusion result. */
-final class HybridHit
+final class HybridHit implements \JsonSerializable
 {
     private array $data;
 
@@ -54,5 +54,10 @@ final class HybridHit
     public function toArray(): array
     {
         return $this->data;
+    }
+
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
     }
 }

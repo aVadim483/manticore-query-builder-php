@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exposes ranked hits, branch metadata and SQL-free pagination of a bounded union
   window; the global total is explicitly unavailable. Exact uint64 IDs, branch
   failures and metadata lifetime are preserved without requiring external models.
+* `HybridResult::toArray()` exports ranked hits, window size, unavailable global
+  total and captured branch metadata. `HybridResult` and `HybridHit` implement
+  `JsonSerializable` without extra SQL or changes to existing result methods.
 
 ## [2.6.0] - 2026-10-20
 
