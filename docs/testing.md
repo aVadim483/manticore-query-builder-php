@@ -94,6 +94,7 @@ not uncommitted local changes.
 | Job | PHP | Manticore |
 |---|---|---|
 | Unit | 7.4, 8.1, 8.2, 8.3, 8.4 | Not required |
+| Full suite, including Buddy | 8.4 | 28.6.6 |
 | Full suite, including Buddy | 7.4, 8.4 | 29.9.0 |
 | Full suite, including Buddy | 8.4 | latest |
 
@@ -104,3 +105,16 @@ and incomplete tests fail the job. All matrix jobs must pass.
 JUnit reports, readiness output and Manticore container diagnostics are retained as Actions
 artifacts for 14 days, including on failures. They show whether a problem came from server
 startup, a missing component or a library test.
+
+## Compatibility checks for new APIs
+
+Manticore 28.6.6 is the pinned baseline for the new batch, JSON/full-text and extended
+numeric KNN/hybrid APIs. This does not raise the server requirement for older APIs.
+The fixed 29.9.0 image and `latest` also run the complete suite with their bundled
+components. Numeric vector fixtures do not require an external embedding provider.
+
+Keep the existing signatures and default behavior of `whereKnn()`, `ranker()`,
+ordinary reads/writes and custom clients. New APIs must have offline error/SQL tests
+and real-server behavior tests, including nested filters, cloned queries and errors.
+Do not treat generated SQL, skipped integration tests or local runs without Buddy
+as proof that the entire matrix passes.
