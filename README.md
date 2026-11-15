@@ -59,15 +59,18 @@ vector candidates, export JSON and page the result window.
 
 ## Related packages
 
-This builder works without a framework. Composer installs its PHP dependencies; the two
-packages below build on it.
+This builder works without a framework. The related Laravel integrations below are
+maintained separately; their 4.x releases use a native Laravel driver.
 
 * [`avadim/manticore-query-builder-laravel`](https://github.com/aVadim483/manticore-query-builder-laravel) —
-  the integration with Laravel and Lumen: a service provider, `config/manticore.php`, named
-  connections, a facade, and reads answering with a `Collection` of row objects.
+  version 4.x is a native SQL database driver for Laravel, including
+  `DB::connection('manticore')`, schema operations and query builders. It has its own
+  implementation and does not depend on this standalone package. Earlier wrapper
+  releases used this builder.
 * [`avadim/manticore-laravel-scout`](https://github.com/aVadim483/manticore-laravel-scout) —
   the ManticoreSearch driver for [Laravel Scout](https://laravel.com/docs/scout): full-text search
-  of Eloquent models as `Post::search('manticore')->get()`.
+  of Eloquent models as `Post::search('manticore')->get()`. Its 4.x line uses the native
+  Laravel driver above.
 
 ## Requirements
 

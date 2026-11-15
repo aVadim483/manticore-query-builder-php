@@ -60,15 +60,18 @@ $globalTotal = $result->totalFound(); // null: известен только р�
 
 ## Смежные пакеты
 
-Это самостоятельный построитель запросов без обязательного фреймворка. Composer устанавливает
-его PHP-зависимости, а два пакета ниже построены на нём.
+Это самостоятельный построитель запросов без обязательного фреймворка. Смежные
+Laravel-интеграции развиваются отдельно; их версии 4.x используют нативный драйвер Laravel.
 
 * [`avadim/manticore-query-builder-laravel`](https://github.com/aVadim483/manticore-query-builder-laravel) —
-  интеграция с Laravel и Lumen: сервис-провайдер, `config/manticore.php`, именованные соединения,
-  фасад и чтения, отвечающие коллекцией объектов-строк.
+  в версии 4.x это нативный SQL-драйвер Laravel с `DB::connection('manticore')`,
+  операциями схемы и построителями запросов. Он имеет собственную реализацию
+  и не зависит от этого standalone-пакета. Прежние версии обёртки использовали
+  этот построитель.
 * [`avadim/manticore-laravel-scout`](https://github.com/aVadim483/manticore-laravel-scout) —
   драйвер ManticoreSearch для [Laravel Scout](https://laravel.com/docs/scout): полнотекстовый
-  поиск по моделям Eloquent в виде `Post::search('manticore')->get()`.
+  поиск по моделям Eloquent в виде `Post::search('manticore')->get()`. Линейка 4.x
+  использует нативный Laravel-драйвер выше.
 
 ## Требования
 
