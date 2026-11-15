@@ -111,6 +111,29 @@ request и вручную через **Actions → tests → Run workflow**. П�
 
 ## Проверки совместимости новых API
 
+Каждое интеграционное задание также устанавливает ZIP-дистрибутив коммита в отдельное
+Composer-приложение и запускает [пример из установленного пакета](../../examples/README.ru.md).
+Для этой проверки нужен ext-zip; это не новая зависимость самой библиотеки.
+Приложение устанавливает только runtime-зависимости. Классы должны загружаться из
+установленного пакета без автозагрузчика рабочего репозитория и без PHPUnit.
+
+Воспроизведение на тестовом сервере после коммита изменений:
+
+```sh
+mkdir -p build/package-dist
+git archive --format=zip --prefix=package/ --output=build/package-dist/library.zip HEAD
+php tests/ci/prepare-package.php build/package-dist/library.zip build/package-consumer
+composer install --working-dir=build/package-consumer --no-dev --prefer-dist --no-progress --no-interaction --no-plugins --no-scripts
+php tests/ci/check-package.php build/package-consumer
+```
+
+Настройте `MANTICORE_HOST` / `MANTICORE_PORT`, как описано выше. Для повторного
+запуска используйте новый пустой каталог приложения. `git archive HEAD` включает
+только закоммиченные файлы. Тестовая версия `2.7.0-dev` использует метаданные из
+архива и проверяемую контрольную сумму ZIP; source URL отсутствует. Проверка
+не публикует и не изменяет релиз. Логи подготовки, установки и запуска сохраняются
+в артефактах интеграционного задания.
+
 Manticore 28.6.6 — фиксированная базовая версия для новых API пакетной записи,
 JSON и полнотекстовых условий, расширенного числового KNN и гибридного поиска.
 Это не повышает требования существующих методов. Образы 29.9.0 и `latest`

@@ -97,7 +97,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: pdo, pdo_mysql, mbstring, json
+          extensions: pdo, pdo_mysql, mbstring, json, zip
           coverage: none
 
       - name: Cache the composer files
@@ -110,6 +110,10 @@ jobs:
       - name: Install the dependencies
         run: composer update --prefer-dist --no-progress --no-interaction
 
+      - name: Check ZIP support for distribution install
+        run: |
+          php -r 'if (!extension_loaded("zip")) { fwrite(STDERR, "The package smoke test needs ext-zip\n"); exit(1); }'
+
       # Probe from the runner with PDO: an open TCP port does not mean Buddy or MCL is ready.
       - name: Check SQL, Columnar, KNN and Buddy
         timeout-minutes: 3
@@ -120,6 +124,14 @@ jobs:
       # the whole suite here: the unit half is cheap and keeps this job self-contained
       - name: Run the tests
         run: vendor/bin/phpunit --fail-on-skipped --fail-on-incomplete --log-junit build/ci/junit.xml
+
+      - name: Install and exercise the ZIP distribution
+        run: |
+          mkdir -p build/package-dist build/ci
+          git archive --format=zip --prefix=package/ --output=build/package-dist/library.zip HEAD
+          php tests/ci/prepare-package.php build/package-dist/library.zip build/package-consumer 2>&1 | tee build/ci/package-prepare.log
+          composer install --working-dir=build/package-consumer --no-dev --prefer-dist --no-progress --no-interaction --no-plugins --no-scripts 2>&1 | tee build/ci/package-install.log
+          php tests/ci/check-package.php build/package-consumer 2>&1 | tee build/ci/package-smoke.log
 
       - name: Collect Manticore diagnostics
         if: always()

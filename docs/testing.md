@@ -108,6 +108,28 @@ startup, a missing component or a library test.
 
 ## Compatibility checks for new APIs
 
+Each integration job also installs the committed ZIP distribution in a separate
+Composer application and runs the [packaged example](../examples/README.md).
+This requires ext-zip in the test environment, not as a new library dependency.
+The consumer installs only runtime dependencies; its classes must resolve inside
+the installed package, with no checkout autoloader or PHPUnit dependency.
+
+To reproduce against a test server after committing the code:
+
+```sh
+mkdir -p build/package-dist
+git archive --format=zip --prefix=package/ --output=build/package-dist/library.zip HEAD
+php tests/ci/prepare-package.php build/package-dist/library.zip build/package-consumer
+composer install --working-dir=build/package-consumer --no-dev --prefer-dist --no-progress --no-interaction --no-plugins --no-scripts
+php tests/ci/check-package.php build/package-consumer
+```
+
+Set `MANTICORE_HOST` / `MANTICORE_PORT` as above. Use a new empty consumer directory
+for another run. `git archive HEAD` includes committed files only. The test-only
+`2.7.0-dev` package repository uses metadata from that archive and a checked ZIP
+checksum; it contains no source URL and does not publish or modify a release.
+Preparation, installation and smoke logs are retained with the integration artifacts.
+
 Manticore 28.6.6 is the pinned baseline for the new batch, JSON/full-text and extended
 numeric KNN/hybrid APIs. This does not raise the server requirement for older APIs.
 The fixed 29.9.0 image and `latest` also run the complete suite with their bundled

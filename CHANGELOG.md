@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fixtures, applies JSON/composed text filters, performs RRF, exports JSON and
   pages the candidate window. It checks its output and removes its own table.
 
+### Changed
+
+* Integration CI installs the committed ZIP distribution in an isolated Composer
+  application with runtime dependencies only, verifies autoloaded class paths and
+  runs the packaged example on every supported integration configuration.
+
 ## [2.6.0] - 2026-10-20
 
 ### Added
