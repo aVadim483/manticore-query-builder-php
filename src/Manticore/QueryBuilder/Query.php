@@ -12,6 +12,7 @@ class Query
 {
     use WhereConditionsTrait;
     use BatchWriteTrait;
+    use KnnSearchTrait;
 
     /**
      * Placeholder for the argument of a unary operator.
@@ -437,6 +438,7 @@ class Query
                 }
             }
             elseif ($parsedSql['command'] === 'SELECT') {
+                $this->validateKnnExecution();
                 if ($this->skipMeta) {
                     // Casting must not run DESCRIBE after the search: getMeta() is called later.
                     $this->columnTypes();

@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `whereFullText()` / `orWhereFullText()` compile nested text conditions into one
   escaped MATCH; unsupported text/attribute OR combinations fail explicitly.
   `rankerExpression()` adds safely quoted formulas without changing `ranker()`.
+* Extended numeric `knn()` supports validated per-query KNN options, finite vectors,
+  cached dimension/metric checks and explicit candidate limits. `withKnnDistance()`
+  and `orderByKnnDistance()` preserve distance expressions across projections and
+  reject alias collisions. Legacy `whereKnn()` retains its signature and defaults.
 
 ## [2.6.0] - 2026-10-20
 
