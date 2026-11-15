@@ -53,6 +53,10 @@ The application supplies the numeric vector; fusion runs in PHP. New APIs retain
 PHP 7.4, existing method signatures and default read/write behavior. The new KNN
 path requires the server KNN library; no Laravel or model provider is required.
 
+Run the [complete import and search example](examples/README.md) to create a test
+table, load a generator in batches, apply JSON/full-text filters, fuse text and
+vector candidates, export JSON and page the result window.
+
 ## Related packages
 
 This builder works without a framework. Composer installs its PHP dependencies; the two

@@ -15,6 +15,7 @@
 * [ResultSet Class](result_set.md)
 * [Logging](logging.md)
 * [Testing and Buddy](testing.md)
+* [Runnable import and hybrid search example](../examples/README.md)
 
 ## Choosing the result API
 

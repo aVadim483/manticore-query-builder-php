@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `HybridResult::toArray()` exports ranked hits, window size, unavailable global
   total and captured branch metadata. `HybridResult` and `HybridHit` implement
   `JsonSerializable` without extra SQL or changes to existing result methods.
+* A runnable import/search example creates a temporary RT table, streams numeric
+  fixtures, applies JSON/composed text filters, performs RRF, exports JSON and
+  pages the candidate window. It checks its output and removes its own table.
 
 ## [2.6.0] - 2026-10-20
 
