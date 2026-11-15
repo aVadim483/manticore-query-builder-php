@@ -98,6 +98,7 @@ not uncommitted local changes.
 | Full suite, including Buddy | 7.4, 8.4 | 29.9.0 |
 | Full suite, including Buddy | 8.4 | latest |
 
+The matrix contains nine jobs: five unit jobs and four full-suite jobs.
 Every full job runs the readiness probe and PHPUnit with `--fail-on-skipped
 --fail-on-incomplete`, without excluding the Buddy group. Missing components, skipped tests
 and incomplete tests fail the job. All matrix jobs must pass.
@@ -108,7 +109,7 @@ startup, a missing component or a library test.
 
 ## Compatibility checks for new APIs
 
-Each integration job also installs the committed ZIP distribution in a separate
+Each of the four integration jobs also installs the committed ZIP distribution in a separate
 Composer application and runs the [packaged example](../examples/README.md).
 This requires ext-zip in the test environment, not as a new library dependency.
 The consumer installs only runtime dependencies; its classes must resolve inside

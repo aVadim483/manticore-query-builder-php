@@ -7,7 +7,9 @@
 Необязательная настройка соединения `lazy_insert_ids` (начиная с 2.6.0)
 по умолчанию равна false. См.
 [ленивое получение ID](writing.md): срок доступности, ошибки и совместимость с
-пользовательскими клиентами. Остальные методы записи по-прежнему получают ID сразу.
+пользовательскими клиентами. `insertGetId()`, `replaceGetId()`, `insertResultSet()` и
+`replaceResultSet()` получают ID сразу. У [пакетной записи](writing.md) свои параметры
+сбора ID; по умолчанию она их не собирает.
 
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
@@ -49,8 +51,8 @@ $res = ManticoreDb::connection('second')->table('texts')->get();
 
 ## Подмена классов соединения и запроса
 
-Обёртке под фреймворк обычно нужно, чтобы чтения отвечали так, как принято в этом фреймворке:
-коллекцией вместо массива, своими объектами строк и так далее. Для этого есть две точки
+Обёртке под фреймворк может понадобиться изменить `get()`: например, возвращать коллекцию
+вместо массива. Для этого есть две точки
 подмены, и нужны обе: одного наследования `Connection` мало — билдер всё равно продолжит
 раздавать базовый класс.
 
@@ -63,7 +65,9 @@ class MyQuery extends Query
 {
     public function get($columns = '*', ...$more)
     {
-        return collect(parent::get($columns, ...$more));
+        $rows = func_num_args() === 0 ? parent::get() : parent::get($columns, ...$more);
+
+        return new \ArrayObject($rows);
     }
 }
 
@@ -115,22 +119,38 @@ ManticoreDb::statement('FLUSH RAMCHUNK products');
 // выполнить запрос и получить строки
 $rows = ManticoreDb::select('SELECT id, title FROM products WHERE MATCH(:q)', [':q' => 'galaxy']);
 
-// транзакция — BEGIN / COMMIT / ROLLBACK Manticore поддерживает для real-time таблиц
-ManticoreDb::transaction(function ($connection) {
-    $connection->table('products')->insert($row);
-    $connection->table('log')->insert($record);
+// $firstProduct и $secondProduct содержат документы одной таблицы
+ManticoreDb::transaction(function ($connection) use ($firstProduct, $secondProduct) {
+    if (!$connection->table('products')->insert($firstProduct)) {
+        throw new \RuntimeException('Не удалось записать товар');
+    }
+    if (!$connection->table('products')->insert($secondProduct)) {
+        throw new \RuntimeException('Не удалось записать второй товар');
+    }
 });
-
-// ... или вручную
-ManticoreDb::beginTransaction();
-ManticoreDb::table('products')->insert($row);
-ManticoreDb::commit();   // либо rollBack()
 ```
 
 В колбэк `transaction()` передаётся соединение, а то, что колбэк вернул, становится
-результатом вызова. Исключение откатывает транзакцию и пробрасывается дальше; второй аргумент
-задаёт число попыток. Savepoint-ов в Manticore нет, поэтому вложенный `transaction()` лишь
-считает уровень вложенности — пишет только внешний commit.
+результатом вызова. Метод использует `BEGIN` / `COMMIT` / `ROLLBACK`.
+Транзакции Manticore охватывают `INSERT`, `REPLACE` и `DELETE` в одной real-time или percolate
+таблице, кроме записи через распределённую таблицу. `UPDATE` и команды изменения схемы
+не транзакционны. До коммита изменения не видны даже чтению в той же сессии.
+См. [контракт транзакций сервера](https://manual.manticoresearch.com/Data_creation_and_modification/Transactions).
+
+Если колбэк бросает исключение, метод делает откат. При одной попытке по умолчанию исключение
+пробрасывается дальше. Возврат `false` из записи или из колбэка не считается исключением и
+ведёт к коммиту; проверяйте результат записи и бросайте исключение явно, если ошибка должна
+прервать транзакцию.
+
+Второй аргумент задаёт максимальное число попыток. При значении больше единицы после
+исключения заново выполняется весь колбэк, включая действия вне Manticore. Не повторяйте
+операции вслепую после сбоя соединения, если результат записи или коммита неизвестен.
+
+Вложенность лишь считает уровни: `COMMIT` отправляет только внешний коммит. Savepoint-ов нет;
+любой откат сбрасывает все уровни и откатывает всю транзакцию. Метод `transaction()` не проверяет
+булевы результаты `beginTransaction()` и `commit()`. Если их нужно контролировать, вызывайте
+ручные методы и проверяйте возвращаемые значения. Эти методы не делают последовательность
+чтения и последующей записи атомарной.
 
 ## Сырые выражения
 
@@ -141,7 +161,14 @@ ManticoreDb::commit();   // либо rollBack()
 $res = ManticoreDb::table('products')->where('qty', 'IN', ManticoreDb::raw('(1,2,3)'))->get();
 ```
 
-Учтите, что Manticore не принимает выражения ни в `INSERT`/`UPDATE`, ни в `WHERE`:
-`WHERE price > qty * 2` — синтаксическая ошибка, так что сравнить одну колонку с другой через
-сырое выражение не получится. Попытка записать выражение как значение бросает
-`InvalidArgumentException`, а не приводит его к числу и не пишет что-то другое.
+Сырые выражения нельзя записывать как значения документов через `insert()` или `update()`:
+билдер бросит `InvalidArgumentException` вместо преобразования в скаляр. Прямая арифметика
+вроде `WHERE price > qty * 2` не является допустимым фильтром Manticore. Вычисляемое значение
+можно выбрать с псевдонимом, а затем отфильтровать этот псевдоним по константе:
+
+```php
+$res = ManticoreDb::table('products')
+    ->select(['*', 'price * 2 AS double_price'])
+    ->where('double_price', '>', 100)
+    ->get();
+```

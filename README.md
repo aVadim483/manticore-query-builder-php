@@ -7,23 +7,24 @@
 
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
-Query Builder for Manticore Search in PHP with Laravel-like syntax
+A standalone PHP query builder for Manticore Search with a fluent API inspired by Laravel.
 
 Features
-* MySQL multiple connections via PDO (because Manticore is SQL-first)
+* Named Manticore connections over the SQL/MySQL protocol via PDO
 * Placeholders as prefix in table names
 * Named parameters in expressions
-* Clear Laravel-like syntax
+* Fluent query construction
 * Multiple INSERT and REPLACE
 * Support MATCH() and multi-level WHERE for SELECT
 * Support faceted search, JOIN of two tables and KNN vector search
 * MVA ANY/ALL filters and geographic radius searches, distance columns and sorting
 * Column types are applied in both directions: PHP values on write, PHP types on read
-* The helpers of the Laravel query builder: aggregates, chunked walks, conditional building,
-  conditions on dates, upsert and the rest
+* Selected helpers inspired by Laravel's query builder, implemented for Manticore:
+  aggregates, chunked iteration, conditional query building, date filters and upserts
 * CALL helpers: `callAutocomplete()`, `callSuggest()`, `callQsuggest()`,
   `callKeywords()`, `callSnippets()` and `callPq()` (percolate queries)
-* A rejected read throws, a rejected write answers with false or zero and keeps its reason
+* Row-returning read helpers throw on execution errors; ordinary writes return a status
+  or count, with execution details available through `lastResultSet()`
 * PSR-3 logging of queries and EXPLAIN of full-text expressions
 * Rows without metadata via `getRows()`, an immutable `Meta` object,
   and optional lazy retrieval of inserted IDs
@@ -35,6 +36,10 @@ Manticore Search server documentation: https://manual.manticoresearch.com/
 Available since [2.7.0](CHANGELOG.md). This release adds [bounded iterable INSERT/REPLACE](docs/writing.md#streaming-batch-insertreplace),
 [JSON filters and composed full-text conditions](docs/json-fulltext.md), and
 [extended numeric KNN and hybrid search](docs/knn-hybrid.md).
+
+The snippet below assumes `products` has a numeric `stock` attribute, a JSON
+`info.tags` array and a KNN-indexed `embedding`. Supply a numeric `$vector` with
+the declared dimensions; the runnable example below includes its own schema and data.
 
 ```php
 $result = ManticoreDb::table('products')->where('stock', '>', 0)
@@ -87,7 +92,7 @@ loaded by the server, or on Manticore Buddy running next to it:
 | Method | Needs | Without it |
 |---|---|---|
 | everything else | the server alone | — |
-| `floatVector()`, `whereKnn()` | KNN library | the table cannot be created: *knn library not loaded* |
+| `floatVector()`, `whereKnn()`, `knn()`, `hybridSearch()` and its shortcuts | KNN library | vector table creation or search fails |
 | `columnar()`, `columnEngine('columnar')`, `engine => 'columnar'` | Columnar library | the table cannot be created: *columnar library not loaded* |
 | `rename()` | Manticore Buddy | the server answers with a syntax error |
 | `callAutocomplete()` | Manticore Buddy and table infixes | the server rejects the call |
@@ -123,7 +128,7 @@ use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
 $config = [
     'defaultConnection' => 'default',
     'connections' => [
-        // Default connection which will be used with environment variables
+        // Named default connection; these explicit values are used as configured
         'default' => [
             'host' => 'localhost',
             'port' => 9306,
@@ -187,13 +192,13 @@ $res = ManticoreDb::table('?products')->insertResultSet($multipleRows);
 $updated = ManticoreDb::table('?products')->where('price', '<', 100)->update(['on_sale' => true]);
 $deleted = ManticoreDb::table('?products')->where('price', '<', 1)->delete();
 
-// A failed write is not thrown - insert() gives false, update()/delete() give 0,
-// and the reason is in the ResultSet left behind
+// On an insert execution failure, insert() returns false; update()/delete() return 0.
+// Inspect the last ResultSet for the execution error; invalid arguments can still throw.
 if (!ManticoreDb::table('?products')->insert($singleRow)) {
     $error = ManticoreDb::lastResultSet()->error();
 }
 
-// A failed read is thrown instead: null in place of the rows would look like an empty table
+// get() throws on a read execution error instead of returning an apparent empty result
 try {
     $rows = ManticoreDb::table('?products')->where('nosuchcolumn', 1)->get();
 }
@@ -232,23 +237,33 @@ IDs before any subsequent command on that connection. The setting defaults to fa
 See [searching](docs/searching.md#rows-without-metadata), [ResultSet](docs/result_set.md)
 and [writing documents](docs/writing.md) for the complete contracts and examples.
 
-## Differences from Laravel Query Builder
+## Relationship to Laravel Query Builder
 
-The API uses familiar Laravel syntax, with these differences:
+Several method names and chaining patterns are familiar from Laravel's query builder.
+This package implements a subset independently over Manticore SQL and has its own
+result types and execution contracts. It works without Laravel or `illuminate/*`.
 
-* Use `whereRegex()` for string attributes and `match()` / `whereMatch()` for full-text
-  fields instead of `whereLike()`.
-* `match()` accepts a query-language expression, unlike `whereFullText()`; process ordinary
-  user input with `escapeMatch()`.
-* `whereColumn()` and `distinct()` are not provided.
-* The `join()` / `leftJoin()` API builds equality joins without table aliases or `joinSub()`.
-* The builder has no dedicated UNION, subquery or row-locking methods. The server supports
-  limited [sub-selects](https://manual.manticoresearch.com/Searching/Sub-selects); a missing
-  builder method does not mean the server lacks the feature.
+* `get()` returns PHP arrays; `search()` / `exec()` return `ResultSet`, including execution
+  errors. Methods asking directly for rows, such as `get()` and `first()`, throw on errors.
+* `whereFullText()` / `orWhereFullText()` (since 2.7) compose field-scoped text conditions
+  and escape text by default. `match()` / `whereMatch()` accept a complete native MATCH
+  expression; pass literal user input through `escapeMatch()` when using that API.
+* `whereRegex()` filters string attributes. `whereLike()`, `whereColumn()` and a query-level
+  `distinct()` are not provided. `Facet::distinct()` is a separate facet option.
+* `chunk()` and `lazy()` read pages; `cursor()` is an alias of `lazy()`, not a single-SELECT
+  stream. OFFSET-based walks are subject to the query's `max_matches` setting.
+* `upsert()` reads each input row's match before INSERT/REPLACE. The whole operation is
+  not automatically atomic, and `uniqueBy` does not create a database uniqueness constraint.
+* Date helpers interpret calendar dates in UTC. `when()` / `unless()` / `tap()` return a
+  query builder; their callback contracts are described in the searching guide.
+* `join()` / `leftJoin()` build equality joins without table aliases or `joinSub()`.
+  Dedicated UNION, subquery and row-locking methods are absent. Manticore supports limited
+  [sub-selects](https://manual.manticoresearch.com/Searching/Sub-selects); an absent builder
+  method does not establish a server limitation.
 
-The WHERE helpers, aggregates, chunked walks, conditional building, upsert, date conditions
-and transactions use Laravel-style syntax. Their server constraints and error behavior are
-documented separately; the API does not promise identical Laravel behavior.
+See [searching](docs/searching.md), [writing](docs/writing.md),
+[results and errors](docs/result_set.md) and [transactions](docs/configuration.md)
+for the supported arguments and behavior.
 
 ## Documentation
 
@@ -275,8 +290,9 @@ The integration tests create and drop their own tables on a live server. They ar
 not failed, when nothing listens on `MANTICORE_HOST:MANTICORE_PORT` (`127.0.0.1:9306`
 by default).
 
-GitHub Actions runs the full suite against Manticore 29.9.0 on PHP 7.4 and 8.4,
-plus a separate `latest` run on PHP 8.4. Before PHPUnit, `tests/ci/check-manticore.php`
+GitHub Actions runs the full suite against Manticore 28.6.6 on PHP 8.4,
+Manticore 29.9.0 on PHP 7.4 and 8.4, and `latest` on PHP 8.4.
+Before PHPUnit, `tests/ci/check-manticore.php`
 waits for working SQL, Columnar filtering, KNN search and a Buddy table rename,
 using temporary tables that it removes afterwards. Run this probe only against a test server.
 The readiness timeout defaults to 90 seconds (`MANTICORE_READY_TIMEOUT`, 1–120 seconds);
@@ -284,13 +300,16 @@ the probe uses the same host and port environment variables as the integration t
 
 CI uses `--fail-on-skipped --fail-on-incomplete`: missing components cannot produce
 a successful full run. Local test skipping remains unchanged. JUnit reports, readiness
-output and container diagnostics are uploaded as artifacts, including on failure,
+output, package-install logs and container diagnostics are uploaded as artifacts, including on failure,
 and retained for 14 days. The workflow also supports manual runs from the Actions tab
-once the workflow is on the default branch. Both pinned-version and `latest` runs must pass.
+once the workflow is on the default branch. All pinned-version and `latest` runs must pass.
 
 The workflow runs on pushes to `main`, on pull requests, and manually. The unit matrix covers
 PHP 7.4 and 8.1–8.4. All Buddy-dependent tests are included in full CI runs. See the
 [testing guide](docs/testing.md) for Docker setup, readiness checks and targeted Buddy tests.
+
+Each integration configuration also installs the committed ZIP distribution in a
+separate Composer application with runtime dependencies only and runs the packaged example.
 
 ## Want to support?
 

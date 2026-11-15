@@ -2,8 +2,8 @@
 
 [Русский](ru/json-fulltext.md)
 
-These helpers extend the existing JSON attributes and `match()` API. They do not
-require Laravel. All examples start with `ManticoreDb::table('products')` and return
+Available since 2.7.0. These helpers extend the existing JSON attributes and `match()` API.
+They do not require Laravel. Examples use `ManticoreDb::table('products')` and return
 the same query builder until a terminal method is called.
 
 ## JSON array membership

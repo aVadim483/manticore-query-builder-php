@@ -2,6 +2,8 @@
 
 [Русский](ru/knn-hybrid.md)
 
+`knn()`, `rankerExpression()` and the hybrid search API were added in 2.7.0.
+
 ## Extended numeric KNN
 
 The additive `knn()` API accepts strict numeric vectors and per-search options:

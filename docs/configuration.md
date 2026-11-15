@@ -6,7 +6,9 @@
 
 The optional connection setting `lazy_insert_ids` (since 2.6.0) defaults to false. See
 [lazy insert IDs](writing.md#optional-lazy-ids-26) for its lifetime, errors and compatibility
-with custom clients. Other write methods continue to retrieve IDs immediately.
+with custom clients. `insertGetId()`, `replaceGetId()`, `insertResultSet()` and
+`replaceResultSet()` retrieve IDs immediately. The [batch APIs](writing.md) have
+separate ID collection options and do not collect IDs by default.
 
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
@@ -48,8 +50,8 @@ $res = ManticoreDb::connection('second')->table('texts')->get();
 
 ## Substituting the connection and query classes
 
-A wrapper for a framework usually needs the reads answered in the way that framework expects —
-a collection instead of an array, its own row objects, and so on. Two hooks are provided for that,
+A wrapper for a framework may need to customize `get()` — for example, to return a collection
+instead of an array. Two hooks are provided for that,
 and both are needed: subclassing `Connection` alone would not help, because the builder would keep
 handing out the plain one.
 
@@ -62,7 +64,9 @@ class MyQuery extends Query
 {
     public function get($columns = '*', ...$more)
     {
-        return collect(parent::get($columns, ...$more));
+        $rows = func_num_args() === 0 ? parent::get() : parent::get($columns, ...$more);
+
+        return new \ArrayObject($rows);
     }
 }
 
@@ -115,22 +119,37 @@ ManticoreDb::statement('FLUSH RAMCHUNK products');
 // run a statement and take its rows
 $rows = ManticoreDb::select('SELECT id, title FROM products WHERE MATCH(:q)', [':q' => 'galaxy']);
 
-// a transaction - Manticore serves BEGIN / COMMIT / ROLLBACK on real-time tables
-ManticoreDb::transaction(function ($connection) {
-    $connection->table('products')->insert($row);
-    $connection->table('log')->insert($record);
+// $firstProduct and $secondProduct contain documents for the same table
+ManticoreDb::transaction(function ($connection) use ($firstProduct, $secondProduct) {
+    if (!$connection->table('products')->insert($firstProduct)) {
+        throw new \RuntimeException('Product insert failed');
+    }
+    if (!$connection->table('products')->insert($secondProduct)) {
+        throw new \RuntimeException('Second product insert failed');
+    }
 });
-
-// ... or by hand
-ManticoreDb::beginTransaction();
-ManticoreDb::table('products')->insert($row);
-ManticoreDb::commit();   // or rollBack()
 ```
 
 The callback of `transaction()` receives the connection, and whatever it returns becomes the
-result of the call. An exception rolls the transaction back and is rethrown; a second argument
-sets how many times to try. There are no savepoints in Manticore, so a nested `transaction()`
-only counts a level deeper - the outermost commit is the one that writes.
+result of the call. The helper uses `BEGIN` / `COMMIT` / `ROLLBACK`.
+Manticore transactions cover `INSERT`, `REPLACE` and `DELETE` on a single real-time or percolate
+table, excluding distributed-table writes. `UPDATE` and schema commands are not transactional.
+Pending writes are invisible even to reads in the same session until commit.
+See the [server transaction contract](https://manual.manticoresearch.com/Data_creation_and_modification/Transactions).
+
+It rolls back when the callback throws. With the default one attempt, the exception is rethrown.
+A `false` return from a write or from the callback is not an exception and still leads to a commit;
+check write results and throw explicitly when a failed write should abort the transaction.
+
+The second argument is the maximum number of attempts. A value above one reruns the entire
+callback after an exception, including any side effects outside Manticore. Do not blindly retry
+operations after a connection failure when the outcome of a write or commit is unknown.
+
+Nesting counts transaction levels: only the outermost commit sends `COMMIT`. There are no
+savepoints; any rollback resets all levels and rolls back the whole transaction. The helper
+does not check the boolean results of `beginTransaction()` and `commit()`. When those results
+must be observed, call the manual methods and check their return values. These methods do not
+make a read-modify-write sequence atomic.
 
 ## Raw expressions
 
@@ -140,7 +159,14 @@ only counts a level deeper - the outermost commit is the one that writes.
 $res = ManticoreDb::table('products')->where('qty', 'IN', ManticoreDb::raw('(1,2,3)'))->get();
 ```
 
-Note that Manticore takes no expressions in `INSERT` and `UPDATE`, and none in `WHERE` either -
-`WHERE price > qty * 2` is a syntax error, so a raw expression cannot make one column compare to
-another. Writing one as a value throws an `InvalidArgumentException` rather than casting it to a
-number and writing something else.
+Raw expressions cannot be written as document values by `insert()` or `update()`; the builder
+throws `InvalidArgumentException` instead of converting them to scalar values. Direct arithmetic
+such as `WHERE price > qty * 2` is not a valid Manticore filter. Select a computed value with an
+alias, then filter that alias against a constant:
+
+```php
+$res = ManticoreDb::table('products')
+    ->select(['*', 'price * 2 AS double_price'])
+    ->where('double_price', '>', 100)
+    ->get();
+```

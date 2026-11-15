@@ -12,10 +12,10 @@ Jump To:
 * [Select statements](#select-statements)
 * [The MATCH clauses](#the-match-clauses)
 * [The WHERE Clause](#the-where-clause)
-* [limit() and offset()](#limit---and-offset--)
-* [orderBy() and orderByDesc()](#orderby---and-orderbydesc--)
-* [groupBy() and having()](#groupby---and-having--)
-* [maxMatches()](#maxmatches--)
+* [limit() and offset()](#limit-and-offset)
+* [orderBy() and orderByDesc()](#orderby-and-orderbydesc)
+* [groupBy() and having()](#groupby-and-having)
+* [maxMatches()](#maxmatches)
 * [Working with JSON attributes](#working-with-json-attributes)
 * [Searching for what a user typed](#searching-for-what-a-user-typed)
 * [Joining tables](#joining-tables)
@@ -63,7 +63,7 @@ use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
 
 // Returns object of ResultSet
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->exec();
-// $res->result() returns collection of rows
+// $res->result() returns an array of rows
 // If one of the columns contains ID then these values will be used as keys for result records
 foreach($res->result() as $id => $row) {
     // $id - ID of found record
@@ -79,10 +79,10 @@ $res = ManticoreDb::table('?products')->match('galaxy')->withoutScore()->get();
 // Selects specified columns and returns object of ResultSet
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->search(['name', 'price']);
 
-// Returns arrays, equals of exec()->result();
+// Returns an array of rows; throws QueryErrorException on a read error
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get();
 
-// Returns arrays, equals of search('*')->result();
+// Returns an array of rows with the requested columns
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get('*');
 
 // ...or the other way
@@ -116,12 +116,14 @@ $query = ManticoreDb::table('?products')->where('country=:country')->bind([':cou
 // The statement as it is built, with the named parameters of bind() left in place
 $query->toSql();      // SELECT * FROM test_products WHERE (country=:country)
 
-// The statement as it goes to the server, with the parameters put in
+// Diagnostic substitution of bind() values, without SQL quoting
 $query->toRawSql();   // SELECT * FROM test_products WHERE (country=de)
 ```
 
 Values of the conditions are part of the statement either way — they are put in when it is built,
 not bound — so the two differ only for a query that uses `bind()`.
+`toRawSql()` is for inspection: its substituted values are not quoted, so the output is not
+necessarily executable SQL. Execution uses the parameterized statement and bound values.
 
 ### Named parameters in the place of a value
 
@@ -147,7 +149,7 @@ $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 110
 // The same result (shorter notation)
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->search(['id', 'name', 'price']);
 
-// Returns collection of rows
+// Returns an array of rows
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->select(['id', 'name', 'price'])->get();
 // The same result (shorter notation)
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get(['id', 'name', 'price']);
@@ -237,9 +239,12 @@ $res = ManticoreDb::table('?products')->match('galaxy', 'title')->get();
 $res = ManticoreDb::table('?products')->match('galaxy', ['title', 'description'])->get();
 ```
 
-There is no `whereFullText()` of the Laravel query builder: its `$value` is plain text, while
-here the same string is an expression, and `MATCH` is one per query rather than a condition
-among others. `whereMatch()` is the same method under the `where*()` naming.
+Since 2.7.0, `whereFullText('title', $text)` accepts ordinary search text and escapes its
+full-text operators by default. It can combine text conditions in nested groups, compiling
+them into a single `MATCH`. It cannot be combined with `match()`/`whereMatch()`, and a group
+that joins full-text and attribute conditions with `OR` is rejected. See
+[JSON filters and composed full-text conditions](json-fulltext.md) for the supported groups
+and the explicit expression mode. `whereMatch()` remains an alias of `match()`.
 
 ### Pattern matching: whereRegex() and whereMatch()
 
@@ -273,7 +278,9 @@ It is escaped as a value, so a quote or a backslash in it is safe to pass throug
 `WHERE`, and Manticore takes one per query — alternatives and negation belong inside the
 expression itself (`match('acme|corp')`, `match('acme -corp')`).
 
-The helpers of the Laravel query builder are there as well:
+Selected helpers use names familiar from Laravel, including `whereNot()`, `whereAny()`,
+`whereAll()`, `whereNone()` and `whereRaw()`. They compile Manticore conditions and retain its
+attribute and full-text restrictions; this is not complete Laravel query builder compatibility:
 ```php
 // SELECT * FROM ?products WHERE NOT((color='red'))
 $res = ManticoreDb::table('?products')->whereNot('color', 'red')->get();
@@ -283,7 +290,7 @@ $res = ManticoreDb::table('?products')->whereNot(function ($condition) {
 })->get();
 
 // at least one of the columns matches
-$res = ManticoreDb::table('?products')->whereAny(['title', 'manufacturer'], 'acme')->get();
+$res = ManticoreDb::table('?products')->whereAny(['price', 'qty'], '>', 10)->get();
 // every one of them
 $res = ManticoreDb::table('?products')->whereAll(['price', 'qty'], '>', 10)->get();
 // none of them
@@ -306,13 +313,13 @@ $res = ManticoreDb::table('products')
         $condition->where('price', '<', 999);
         $condition->where(function($condition) {
             $condition->where('color', 'green');
-            $condition->where('color', 'black');
+            $condition->orWhere('color', 'black');
         });
     })
     ->get();
 ```
-Inside the closure the same methods are available as on the builder itself, including
-```whereIn()```, ```whereNull()``` and ```whereBetween()```:
+The closure receives a condition group with the shared `where*()` helpers, including
+`whereIn()`, `whereNull()` and `whereBetween()`. It is not a full query builder:
 ```php
 $res = ManticoreDb::table('products')
     ->where(function($condition) {
@@ -325,7 +332,7 @@ $res = ManticoreDb::table('products')
 You can use methods:
 * where(\<field>, \<condition>, \<value>)
 * where(\<field>, \<value>) => where(\<field>, '=', \<value>)
-* where(\<field>, null) => where(\<field>, 'IS NULL')
+* where(\<field>, null) => SQL `field IS NULL`
 * where(\<array>) - a set of conditions joined with AND
 * where(\<callback>)
 * andWhere(\<field>, \<condition>, \<value>)
@@ -333,7 +340,7 @@ You can use methods:
 * andWhere(\<array>)
 * andWhere(\<callback>)
 * orWhere(\<field>, \<condition>, \<value>)
-* orWhere(\<field>, \<value>) => where(\<field>, '=', \<value>)
+* orWhere(\<field>, \<value>) => orWhere(\<field>, '=', \<value>)
 * orWhere(\<array>)
 * orWhere(\<callback>)
 * whereNull(\<field>)
@@ -631,7 +638,11 @@ ManticoreDb::create('?products', function (SchemaTable $table) {
 });
 
 // vectors are written and read back as arrays of floats
-ManticoreDb::table('?products')->insert(['title' => 'red apple', 'embedding' => [0.12, 0.4, ...]]);
+// an illustrative 384-dimensional vector; an application supplies its model's output
+$vector = array_fill(0, 384, 0.0);
+$vector[0] = 0.12;
+$vector[1] = 0.4;
+ManticoreDb::table('?products')->insert(['title' => 'red apple', 'embedding' => $vector]);
 
 // the five nearest neighbours of the given vector
 $rows = ManticoreDb::table('?products')->whereKnn('embedding', 5, $vector)->get();
@@ -723,7 +734,8 @@ if (ManticoreDb::table('?products')->where('price', '>', 1000)->doesntExist()) {
 $row = ManticoreDb::table('?products')->where('sku', 'A-1')->sole();
 ```
 
-An aggregate of a result without rows is `null`, not zero.
+`aggregate()`, `max()`, `min()`, `sum()` and `avg()` return `null` when the server returns no
+aggregate row. `count()` always returns an integer, including `0` for an empty result.
 
 ## Walking over a large result
 
@@ -733,8 +745,7 @@ ManticoreDb::table('?products')->chunk(500, function (array $rows, int $page) {
     // return false to stop the walk
 });
 
-// page by page, by the id column - the deeper pages do not get slower, and max_matches
-// does not bound the walk
+// page by page, using id > the last ID instead of a growing OFFSET
 ManticoreDb::table('?products')->chunkById(500, function (array $rows) { /* ... */ });
 
 // row by row
@@ -744,6 +755,15 @@ ManticoreDb::table('?products')->each(function (array $row) { /* ... */ });
 foreach (ManticoreDb::table('?products')->lazy(500) as $row) { /* ... */ }
 foreach (ManticoreDb::table('?products')->cursor() as $row) { /* ... */ }
 ```
+
+`chunk()` passes an array of rows and the page number to its callback. `lazy()` returns a PHP
+generator that fetches pages with `LIMIT`/`OFFSET`; `cursor()` is an alias of `lazy()`, not a
+streaming database cursor. Use a stable order when walking pages.
+
+`chunkById()` orders the chosen column ascending (by default `id`); include that column in
+the selected columns and use a unique, increasing key. It avoids growing offsets, but each
+page is still subject to server limits and query cost. These methods do not provide a snapshot
+of data being changed during the walk.
 
 ## Conditional building
 
@@ -766,6 +786,12 @@ $cheap = $query->clone()->where('price', '<', 100);
 $query->dump();
 $query->dd();
 ```
+
+`when($value, $callback, $default = null)` calls the callback for a truthy value, or the optional
+default callback for a falsy one. Both receive the query and `$value`. `unless()` applies the
+same logic to `!$value`, so its callback receives the inverted boolean rather than the original
+value. A returned `Query` becomes the result of `when()`/`unless()`; any other return value is
+ignored and the original query is returned. `tap()` always returns the original query.
 
 ## Working with JSON attributes
 
@@ -809,8 +835,9 @@ We are going to use a simple document with id, name and a metadata attribute rep
 ```
 Let's perform a filtering by metadata
 ```php
-// SELECT * FROM t WHERE DOUBLE(metadata.price)>200;
-$res = ManticoreDb::table('t')->where('DOUBLE(metadata.price)', '>', 250)->get();
+// SELECT *, DOUBLE(metadata.price) AS metadata_price FROM t WHERE metadata_price>200;
+$res = ManticoreDb::table('t')->select(['*', 'DOUBLE(metadata.price) AS metadata_price'])
+    ->where('metadata_price', '>', 200)->get();
 
 // SELECT * FROM t WHERE metadata.cpu.model='Kyro 345';
 $res = ManticoreDb::table('t')->where('metadata.cpu.model', 'Kyro 345')->get();
@@ -819,18 +846,19 @@ $res = ManticoreDb::table('t')->where('metadata.cpu.model', 'Kyro 345')->get();
 $res = ManticoreDb::table('t')->select(['id', 'ANY(x.stock > 0 AND GEODIST(23.0,46.5, DOUBLE(x.lat), DOUBLE(x.long), {out=mi}) < 10 FOR x IN metadata.locations) AS close_to_you'])
     ->orderByDesc('close_to_you')->get();
 
-// SELECT * FROM t ORDER BY INTEGER(metadata.video_rec[0]) DESC;
-$res = ManticoreDb::table('t')->orderByDesc('INTEGER(metadata.video_rec[0])')->get();
+// SELECT *, INTEGER(metadata.memory) AS memory_size FROM t ORDER BY memory_size DESC;
+$res = ManticoreDb::table('t')->select(['*', 'INTEGER(metadata.memory) AS memory_size'])
+    ->orderByDesc('memory_size')->get();
 
-// SELECT *, IN(metadata.color, 'black', 'white') AS color_filter WHERE color_filter=1;
+// SELECT *, IN(metadata.color, 'black', 'white') AS color_filter FROM t WHERE color_filter=1;
 // The column list is not escaped, so literals can be written as they are
-$res = ManticoreDb::table($table)->select(['*', "IN(metadata.color, 'black', 'white') as color_filter"])
+$res = ManticoreDb::table('t')->select(['*', "IN(metadata.color, 'black', 'white') as color_filter"])
     ->where('color_filter=1')
     ->get();
 
 // The same with named parameters - use them for values that come from the outside,
 // they are passed to the server as bound parameters instead of being pasted into the SQL
-$res = ManticoreDb::table($table)->select(['*', 'IN(metadata.color, :black, :white) as color_filter'])
+$res = ManticoreDb::table('t')->select(['*', 'IN(metadata.color, :black, :white) as color_filter'])
     ->where('color_filter=1')
     ->bind([':black' => 'black', ':white' => 'white'])
     ->get();
@@ -840,6 +868,8 @@ $res = ManticoreDb::table($table)->select(['*', 'IN(metadata.color, :black, :whi
 ## Faceted search
 
 ```php
+use avadim\Manticore\QueryBuilder\Facet;
+
 $res = ManticoreDb::table('products')
     ->match('big')
     ->facet('country', function (Facet $facet) {
@@ -862,18 +892,14 @@ foreach ($res->facets() as $key => $facet) {
 }
 
 // get specified facet #0
-foreach ($res->facets(0) as $key => $facet) {
-    foreach ($facet as $row) {
-        $country = $row['country'];
-        $count = $row['_count']; // auto defined field 
-    }
+foreach ($res->facets(0) as $row) {
+    $country = $row['country'];
+    $count = $row['_count']; // auto defined field
 }
 // get specified facet #1
-foreach ($res->facets(0) as $key => $facet) {
-    foreach ($facet as $row) {
-        $country = $row['cost']; // defined in alias()
-        $count = $row['_count']; // auto defined field 
-    }
+foreach ($res->facets(1) as $row) {
+    $cost = $row['cost']; // defined in alias()
+    $count = $row['_count']; // auto defined field
 }
 
 ```
@@ -923,7 +949,7 @@ See the [server documentation](https://manual.manticoresearch.com/Searching/Auto
 `CALL SUGGEST` — the words of the table closest to the given one, i.e. "did you mean":
 
 ```php
-ManticoreDb::table('?products')->create([
+ManticoreDb::create('?products', [
     'title' => 'text',
 ], ['min_infix_len' => 2]);
 
@@ -1020,12 +1046,12 @@ than documents, and this asks which of them a document would have been an answer
 saved search or an alert works.
 
 ```php
-ManticoreDb::table('?subscriptions')->create([
+ManticoreDb::create('?subscriptions', [
     'title' => 'text',
     'gid'   => 'int',
 ], ['type' => 'pq']);
 
-ManticoreDb::connection()->statement("INSERT INTO subscriptions (query, tags) VALUES ('fox', 'animals')");
+ManticoreDb::connection()->statement("INSERT INTO ?subscriptions (query, tags) VALUES ('fox', 'animals')");
 
 $rows = ManticoreDb::table('?subscriptions')->callPq(['title' => 'the quick brown fox']);
 // [['id' => 6416985563647181697]]

@@ -17,6 +17,10 @@ Examples use `avadim\Manticore\QueryBuilder\Builder as ManticoreDb` and a real-t
 the ID of a single row; a nonzero argument overrides `id` in that row. It is ignored for
 multiple rows: put each ID in its own row. Numeric IDs remain the supported ID contract.
 
+These existing methods use PHP integers for IDs, including formatting and ID retrieval.
+Use IDs within `0..PHP_INT_MAX` for this API; it does not preserve the full uint64 range.
+The batch methods introduced in 2.7 have a separate exact-uint64 contract described below.
+
 ## Insert one document
 
 ```php
@@ -103,8 +107,60 @@ $ok = ManticoreDb::table('products')->insert([
 
 Pass JSON objects, MVA attributes and vectors as PHP arrays for columns with those schema
 types. Vector dimensions must match the schema. Server validation still applies; supplying
-an array does not make it valid for an arbitrary column. Keep SQL expressions explicit via
-the existing `raw()` API rather than interpolating user input into SQL.
+an array does not make it valid for an arbitrary column. Do not pass `raw()` expressions
+as INSERT, REPLACE or UPDATE values: the formatter rejects them with
+`InvalidArgumentException`. `raw()` is for SQL expressions in supported query clauses;
+it does not make server-side arithmetic assignments available in these write methods.
+
+## Upserts and conditional writes
+
+`upsert()` and `updateOrInsert()` are helpers implemented by this library over several
+Manticore queries. Their familiar names do not imply Laravel's database-specific SQL
+implementation, uniqueness guarantees or error behavior.
+
+```php
+$written = ManticoreDb::table('products')->upsert([
+    ['id' => 100, 'title' => 'Updated phone', 'price' => 125.00],
+    ['id' => 101, 'title' => 'New tablet', 'price' => 150.00],
+], ['id'], ['title', 'price']);
+```
+
+`upsert(array $rows, $uniqueBy, ?array $update = null): int` looks up each input row
+with a SELECT matching the supplied key columns. It INSERTs an absent document or
+merges a found row with the selected input fields and writes it with REPLACE. `$update`
+restricts fields written to an existing document; null uses all supplied fields.
+Pass a non-empty key or key list that identifies one document. The method does not
+create or verify a unique index and does not reject multiple matches before selecting
+the first one. REPLACE can preserve only fields returned by the lookup: TEXT fields
+that are not stored/retrievable cannot be reconstructed automatically.
+
+The returned integer counts successful per-row writes. A failed write can leave a
+partially applied input; subsequent rows are still attempted. A rejected lookup throws
+`QueryErrorException`, and a missing key column throws `InvalidArgumentException` when
+that row is reached, possibly after earlier writes. There is no whole-input preflight,
+automatic transaction or concurrency protection for the read/merge/write sequence.
+The last result alone cannot establish that every earlier write succeeded.
+
+`updateOrInsert(array $attributes, ?array $values = []): bool` first checks for a
+matching document. If one exists, it UPDATEs matching documents; otherwise it INSERTs
+the merged attributes and values. `$values` must be an array; a callback is not supported.
+The UPDATE branch retains native attribute-update restrictions and cannot change TEXT
+fields. In the current implementation that branch tests the returned update count with
+`>= 0`, so its boolean can be true even after a failed UPDATE returned zero. Inspect the
+last write result immediately rather than treating that boolean as a reliable success flag:
+
+```php
+$query = ManticoreDb::table('products');
+$query->updateOrInsert(['id' => 100], ['price' => 125.00]);
+$result = $query->lastResultSet();
+if ($result !== null && !$result->success()) {
+    $message = $result->error();
+}
+```
+
+This helper also has no automatic transaction or protection against changes between
+lookup and write. For an explicit full-document replacement with a known ID use
+`replace()` and include every value that must be retained.
 
 ## Errors and the last result
 
@@ -120,11 +176,20 @@ if (!$ok) {
 }
 ```
 
-Write execution errors are reported through `false`, `success()` and `error()`. The
-`*ResultSet()` methods return that complete answer directly. Reads throw
-`QueryErrorException` on failure. `lastResultSet()` is shared by queries made by a connection
-and refers to its latest operation, including service commands; save a needed result before
-running another command. See [ResultSet](result_set.md).
+For ordinary writes, execution failures are reported through the scalar return value
+and `ResultSet::success()` / `error()`. The `*ResultSet()` methods return that complete
+answer directly. Row-returning methods such as `get()` and `first()`, and scalar reads
+such as `count()` or `sum()`, throw `QueryErrorException` when execution fails;
+`search()` and `exec()` return an unsuccessful
+ResultSet instead. Argument/SQL-compilation errors can throw before either path executes.
+`lastResultSet()` is shared by queries made by a connection and refers to the latest
+operation that publishes a ResultSet, including explicit service commands. Internal
+schema lookups and the automatic SHOW META do not replace the public result slot.
+Save a needed result before another public operation. See [ResultSet](result_set.md).
+
+An eager ID-query failure can be reported after the INSERT/REPLACE itself reached the
+server; an unsuccessful result is not proof that nothing was written. Lazy-ID failures
+are reported separately from write success, as described below.
 
 There is no automatic retry of writes. A lost connection may leave the outcome unknown;
 repeating a write unconditionally can repeat its effects. Multiple statements are not

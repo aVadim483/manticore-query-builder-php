@@ -80,10 +80,10 @@ $res = ManticoreDb::table('?products')->match('galaxy')->withoutScore()->get();
 // выбрать указанные колонки и вернуть ResultSet
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->search(['name', 'price']);
 
-// вернуть массивы, то же самое, что exec()->result()
+// вернуть массив строк; ошибка чтения вызывает QueryErrorException
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get();
 
-// то же, что search('*')->result()
+// вернуть массив строк с запрошенными колонками
 $res = ManticoreDb::table('?products')->match('galaxy')->where('price', '>', 1100)->get('*');
 
 // ... либо по частям
@@ -118,12 +118,15 @@ $query = ManticoreDb::table('?products')->where('country=:country')->bind([':cou
 // запрос в том виде, в каком он построен, с именованными параметрами bind() на месте
 $query->toSql();      // SELECT * FROM test_products WHERE (country=:country)
 
-// запрос в том виде, в каком он уходит на сервер, с подставленными параметрами
+// диагностическая подстановка значений bind() без SQL-кавычек
 $query->toRawSql();   // SELECT * FROM test_products WHERE (country=de)
 ```
 
 Значения условий попадают в запрос при его сборке в любом случае — они не биндятся, — поэтому
 две формы различаются только для запроса с `bind()`.
+`toRawSql()` предназначен для просмотра: подставленные значения не заключаются в кавычки,
+поэтому результат не обязательно является исполняемым SQL. При выполнении используются
+параметризованный запрос и связанные значения.
 
 ### Именованный параметр вместо значения
 
@@ -241,9 +244,13 @@ $res = ManticoreDb::table('?products')->match('galaxy', 'title')->get();
 $res = ManticoreDb::table('?products')->match('galaxy', ['title', 'description'])->get();
 ```
 
-Метода `whereFullText()` из Laravel здесь нет намеренно: там `$value` — обычный текст, а тут та
-же строка является выражением, и `MATCH` в запросе может быть только один, а не одно условие
-среди прочих. `whereMatch()` — тот же `match()`, названный в стиле семейства `where*()`.
+Начиная с 2.7.0, `whereFullText('title', $text)` принимает обычный поисковый текст и по
+умолчанию экранирует полнотекстовые операторы. Метод позволяет объединять текстовые условия
+во вложенных группах и компилирует их в один `MATCH`. Его нельзя сочетать с
+`match()`/`whereMatch()`; группа, объединяющая текстовые условия и условия по атрибутам через
+`OR`, отвергается. Поддерживаемые группы и явный режим выражения описаны в разделе
+[JSON-фильтры и составные полнотекстовые условия](json-fulltext.md).
+`whereMatch()` остаётся псевдонимом `match()`.
 
 ### Сопоставление по образцу: whereRegex() и whereMatch()
 
@@ -278,7 +285,9 @@ $res = ManticoreDb::table('?products')->whereMatch('galaxy')->get();
 условие `WHERE`, и Manticore принимает её одну на запрос. Альтернативы и отрицание пишутся
 внутри самого выражения: `match('acme|corp')`, `match('acme -corp')`.
 
-Остальные помощники, знакомые по Laravel, тоже на месте:
+Некоторые помощники используют знакомые по Laravel имена: `whereNot()`, `whereAny()`,
+`whereAll()`, `whereNone()` и `whereRaw()`. Они строят условия Manticore с его ограничениями
+на атрибуты и полнотекстовый поиск; полной совместимости с Laravel query builder нет:
 ```php
 // SELECT * FROM ?products WHERE NOT((color='red'))
 $res = ManticoreDb::table('?products')->whereNot('color', 'red')->get();
@@ -288,7 +297,7 @@ $res = ManticoreDb::table('?products')->whereNot(function ($condition) {
 })->get();
 
 // совпадает хотя бы одна из колонок
-$res = ManticoreDb::table('?products')->whereAny(['title', 'manufacturer'], 'acme')->get();
+$res = ManticoreDb::table('?products')->whereAny(['price', 'qty'], '>', 10)->get();
 // совпадают все
 $res = ManticoreDb::table('?products')->whereAll(['price', 'qty'], '>', 10)->get();
 // не совпадает ни одна
@@ -311,13 +320,13 @@ $res = ManticoreDb::table('products')
         $condition->where('price', '<', 999);
         $condition->where(function($condition) {
             $condition->where('color', 'green');
-            $condition->where('color', 'black');
+            $condition->orWhere('color', 'black');
         });
     })
     ->get();
 ```
-Внутри замыкания доступны те же методы, что и у самого билдера, включая `whereIn()`,
-`whereNull()` и `whereBetween()`:
+Замыкание получает группу условий с общими помощниками `where*()`, включая `whereIn()`,
+`whereNull()` и `whereBetween()`. Это не полноценный объект запроса:
 ```php
 $res = ManticoreDb::table('products')
     ->where(function($condition) {
@@ -330,7 +339,7 @@ $res = ManticoreDb::table('products')
 Доступные методы:
 * where(\<поле>, \<оператор>, \<значение>)
 * where(\<поле>, \<значение>) => where(\<поле>, '=', \<значение>)
-* where(\<поле>, null) => where(\<поле>, 'IS NULL')
+* where(\<поле>, null) => SQL `поле IS NULL`
 * where(\<массив>) — набор условий через AND
 * where(\<замыкание>)
 * andWhere(\<поле>, \<оператор>, \<значение>)
@@ -638,7 +647,11 @@ ManticoreDb::create('?products', function (SchemaTable $table) {
 });
 
 // векторы записываются и читаются как массивы чисел
-ManticoreDb::table('?products')->insert(['title' => 'красное яблоко', 'embedding' => [0.12, 0.4, ...]]);
+// условный вектор из 384 чисел; в приложении его выдаёт модель
+$vector = array_fill(0, 384, 0.0);
+$vector[0] = 0.12;
+$vector[1] = 0.4;
+ManticoreDb::table('?products')->insert(['title' => 'красное яблоко', 'embedding' => $vector]);
 
 // пять ближайших соседей заданного вектора
 $rows = ManticoreDb::table('?products')->whereKnn('embedding', 5, $vector)->get();
@@ -731,7 +744,8 @@ if (ManticoreDb::table('?products')->where('price', '>', 1000)->doesntExist()) {
 $row = ManticoreDb::table('?products')->where('sku', 'A-1')->sole();
 ```
 
-Агрегат пустой выборки равен `null`, а не нулю.
+`aggregate()`, `max()`, `min()`, `sum()` и `avg()` возвращают `null`, если сервер не вернул
+строку с агрегатом. `count()` всегда возвращает целое число, в том числе `0` для пустой выборки.
 
 ## Обход большой выборки
 
@@ -741,7 +755,7 @@ ManticoreDb::table('?products')->chunk(500, function (array $rows, int $page) {
     // верните false, чтобы прервать обход
 });
 
-// постранично по колонке id — глубокие страницы не замедляются, и max_matches обход не ограничивает
+// постранично, через id > последнего ID вместо растущего OFFSET
 ManticoreDb::table('?products')->chunkById(500, function (array $rows) { /* ... */ });
 
 // построчно
@@ -751,6 +765,15 @@ ManticoreDb::table('?products')->each(function (array $row) { /* ... */ });
 foreach (ManticoreDb::table('?products')->lazy(500) as $row) { /* ... */ }
 foreach (ManticoreDb::table('?products')->cursor() as $row) { /* ... */ }
 ```
+
+`chunk()` передаёт колбэку массив строк и номер страницы. `lazy()` возвращает PHP-генератор,
+который загружает страницы через `LIMIT`/`OFFSET`; `cursor()` — псевдоним `lazy()`, а не
+потоковый курсор базы данных. Для постраничного обхода задавайте стабильный порядок.
+
+`chunkById()` сортирует выбранную колонку по возрастанию (по умолчанию это `id`); включите её
+в список выбираемых колонок и используйте уникальный возрастающий ключ. Метод избегает
+растущего смещения, но каждая страница по-прежнему зависит от ограничений сервера и стоимости
+запроса. Эти методы не создают снимок данных, изменяющихся во время обхода.
 
 ## Условное построение запроса
 
@@ -773,6 +796,13 @@ $cheap = $query->clone()->where('price', '<', 100);
 $query->dump();
 $query->dd();
 ```
+
+`when($value, $callback, $default = null)` вызывает колбэк для истинного значения или
+необязательный колбэк `$default` для ложного. Оба получают запрос и `$value`. `unless()`
+применяет ту же логику к `!$value`, поэтому передаёт в колбэк инвертированное логическое
+значение, а не исходное. Если колбэк вернул `Query`, он становится результатом
+`when()`/`unless()`; другое возвращаемое значение игнорируется, и возвращается исходный
+запрос. `tap()` всегда возвращает исходный запрос.
 
 ## Работа с JSON-атрибутами
 
@@ -816,8 +846,9 @@ $query->dd();
 ```
 Фильтрация по metadata:
 ```php
-// SELECT * FROM t WHERE DOUBLE(metadata.price)>200;
-$res = ManticoreDb::table('t')->where('DOUBLE(metadata.price)', '>', 250)->get();
+// SELECT *, DOUBLE(metadata.price) AS metadata_price FROM t WHERE metadata_price>200;
+$res = ManticoreDb::table('t')->select(['*', 'DOUBLE(metadata.price) AS metadata_price'])
+    ->where('metadata_price', '>', 200)->get();
 
 // SELECT * FROM t WHERE metadata.cpu.model='Kyro 345';
 $res = ManticoreDb::table('t')->where('metadata.cpu.model', 'Kyro 345')->get();
@@ -826,18 +857,19 @@ $res = ManticoreDb::table('t')->where('metadata.cpu.model', 'Kyro 345')->get();
 $res = ManticoreDb::table('t')->select(['id', 'ANY(x.stock > 0 AND GEODIST(23.0,46.5, DOUBLE(x.lat), DOUBLE(x.long), {out=mi}) < 10 FOR x IN metadata.locations) AS close_to_you'])
     ->orderByDesc('close_to_you')->get();
 
-// SELECT * FROM t ORDER BY INTEGER(metadata.video_rec[0]) DESC;
-$res = ManticoreDb::table('t')->orderByDesc('INTEGER(metadata.video_rec[0])')->get();
+// SELECT *, INTEGER(metadata.memory) AS memory_size FROM t ORDER BY memory_size DESC;
+$res = ManticoreDb::table('t')->select(['*', 'INTEGER(metadata.memory) AS memory_size'])
+    ->orderByDesc('memory_size')->get();
 
-// SELECT *, IN(metadata.color, 'black', 'white') AS color_filter WHERE color_filter=1;
+// SELECT *, IN(metadata.color, 'black', 'white') AS color_filter FROM t WHERE color_filter=1;
 // список колонок не экранируется, поэтому литералы пишутся как есть
-$res = ManticoreDb::table($table)->select(['*', "IN(metadata.color, 'black', 'white') as color_filter"])
+$res = ManticoreDb::table('t')->select(['*', "IN(metadata.color, 'black', 'white') as color_filter"])
     ->where('color_filter=1')
     ->get();
 
 // то же с именованными параметрами — используйте их для значений, приходящих извне:
 // они передаются серверу как связанные параметры, а не вставляются в текст SQL
-$res = ManticoreDb::table($table)->select(['*', 'IN(metadata.color, :black, :white) as color_filter'])
+$res = ManticoreDb::table('t')->select(['*', 'IN(metadata.color, :black, :white) as color_filter'])
     ->where('color_filter=1')
     ->bind([':black' => 'black', ':white' => 'white'])
     ->get();
@@ -846,6 +878,8 @@ $res = ManticoreDb::table($table)->select(['*', 'IN(metadata.color, :black, :whi
 ## Фасетный поиск
 
 ```php
+use avadim\Manticore\QueryBuilder\Facet;
+
 $res = ManticoreDb::table('products')
     ->match('big')
     ->facet('country', function (Facet $facet) {
@@ -868,18 +902,14 @@ foreach ($res->facets() as $key => $facet) {
 }
 
 // конкретный фасет №0
-foreach ($res->facets(0) as $key => $facet) {
-    foreach ($facet as $row) {
-        $country = $row['country'];
-        $count = $row['_count']; // добавляется автоматически
-    }
+foreach ($res->facets(0) as $row) {
+    $country = $row['country'];
+    $count = $row['_count']; // добавляется автоматически
 }
 // конкретный фасет №1
-foreach ($res->facets(1) as $key => $facet) {
-    foreach ($facet as $row) {
-        $cost = $row['cost'];    // задано через alias()
-        $count = $row['_count']; // добавляется автоматически
-    }
+foreach ($res->facets(1) as $row) {
+    $cost = $row['cost']; // задано через alias()
+    $count = $row['_count']; // добавляется автоматически
 }
 ```
 Методы фасета, доступные внутри замыкания:
@@ -928,7 +958,7 @@ $rows = ManticoreDb::table('?products')->callAutocomplete('manti', [
 `CALL SUGGEST` — слова таблицы, ближайшие к заданному, то есть «возможно, вы имели в виду»:
 
 ```php
-ManticoreDb::table('?products')->create([
+ManticoreDb::create('?products', [
     'title' => 'text',
 ], ['min_infix_len' => 2]);
 
@@ -1025,12 +1055,12 @@ $rows = ManticoreDb::table('?products')->callSnippets(
 поиски и оповещения.
 
 ```php
-ManticoreDb::table('?subscriptions')->create([
+ManticoreDb::create('?subscriptions', [
     'title' => 'text',
     'gid'   => 'int',
 ], ['type' => 'pq']);
 
-ManticoreDb::connection()->statement("INSERT INTO subscriptions (query, tags) VALUES ('fox', 'animals')");
+ManticoreDb::connection()->statement("INSERT INTO ?subscriptions (query, tags) VALUES ('fox', 'animals')");
 
 $rows = ManticoreDb::table('?subscriptions')->callPq(['title' => 'the quick brown fox']);
 // [['id' => 6416985563647181697]]

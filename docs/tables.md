@@ -9,13 +9,16 @@ Jump To:
 * [SHOW TABLES](#show-tables)
 * [SHOW CREATE TABLE](#show-create-table)
 * [DESCRIBE TABLE](#describe-table)
-* [SHOW TABLE STATUS](#show-table-table_name-status)
-* [SHOW TABLE SETTINGS](#show-table-table_name-settings)
+* [SHOW TABLE STATUS](#show-table-status)
+* [SHOW TABLE SETTINGS](#show-table-settings)
 
 ## Create table
 
+The following examples show alternative ways to create a table; choose one form.
+
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+use avadim\Manticore\QueryBuilder\Schema\SchemaTable;
 
 // Raw SQL query
 $res = ManticoreDb::sql("create table products(title text, price float engine='columnar') engine='rowwise'")->exec();
@@ -44,7 +47,7 @@ $fields = [
     // 'field_name' => 'field_type',
     // or 'field_name' => [field_options],
     'title' => 'text stored',
-    'article' => ['text', 'indexed'],
+    'article' => ['type' => 'text', 'indexed'],
     'country' => ['type' => 'string', 'attribute', 'fast_fetch' => 0],
     'time' => ['type' => 'timestamp', 'engine' => 'columnar'],
     'data' => 'json',
@@ -58,7 +61,7 @@ $res = ManticoreDb::table('demo_test')->create($fields);
 
 // Create table with options
 $options = [
-    'morphology' => ['lemmatize_uk_all', 'lemmatize_de_all'],
+    'morphology' => 'lemmatize_uk_all,lemmatize_de_all',
     'html_strip' => 1, 
     'html_index_attrs' => 'img=alt,title; a=title;'
 ];
@@ -66,8 +69,8 @@ $res = ManticoreDb::table('demo_test')->options($options)->create($fields);
 $res = ManticoreDb::create('demo_test', $fields, $options);
 
 $res = ManticoreDb::createIfNotExists('demo_test', $fields, $options);
-if (!ManticoreDb::hasTable('demo_test') {
-$res = ManticoreDb::create('demo_test', $fields, $options);
+if (!ManticoreDb::hasTable('demo_test')) {
+    $res = ManticoreDb::create('demo_test', $fields, $options);
 }
 ```
 
@@ -87,7 +90,7 @@ $res = ManticoreDb::table('products')->addColumn('time', ['type' => 'timestamp',
 $res = ManticoreDb::table('products')->dropColumn('price');
 $res = ManticoreDb::table('products')->dropColumn(['price', 'qty']);
 
-// Widen an integer column; int -> bigint is the only change of type the server makes
+// Widen an integer column from int to bigint
 $res = ManticoreDb::table('products')->modifyColumn('group_id', 'bigint');
 
 // Change the full-text settings of the table (the columns are not touched)
@@ -106,6 +109,9 @@ $res = ManticoreDb::rename('?products', '?goods');
 
 Things to keep in mind:
 
+* Use the specific methods above. The generic `alter()` method is not implemented.
+* `modifyColumn()` sends a type change to the server; it does not drop and recreate the column.
+  Unsupported conversions return a server error.
 * A new scalar attribute is filled with an empty value of its type in the rows that are already
   there, and the table cannot be queried while the column is being added.
 * The `id` column can neither be dropped nor modified.
@@ -114,8 +120,8 @@ Things to keep in mind:
 * `ALTER` is not transactional. When a chain of statements is sent (`dropColumn()` with several
   names), it stops at the first error, the statements before it stay applied, and
   `$res->sqlQuery()` reports the queries that really reached the server.
-* Errors of a schema statement are not thrown: `$res->success()` is `false` and `$res->error()` holds the message,
-  just like with the other statements.
+* Server errors from these schema writes are returned in the `ResultSet`: `$res->success()`
+  is `false` and `$res->error()` holds the message. Invalid arguments can throw before SQL is sent.
 
 ```php
 $res = ManticoreDb::table('products')->dropColumn('nonexistent');
@@ -146,12 +152,13 @@ $res = ManticoreDb::showTables();
 ```
 | Index         | Table         | Name        | Type |
 |---------------|---------------|-------------|------|
-| test_products | test_products |  ?_products | rt   |
+| test_products | test_products |  ?products  | rt   |
 
+With a configured prefix of `test_`, `Name` replaces that prefix with `?`.
 
 ```php
 // Get tables by pattern
-$res = ManticoreDb::sql('SHOW TABLES LIKE abc%')->get();
+$res = ManticoreDb::sql("SHOW TABLES LIKE 'abc%'")->get();
 $res = ManticoreDb::showTables('abc%');
 
 // Get tables with prefix
@@ -182,28 +189,37 @@ $res = ManticoreDb::sql('DESC test')->get();
 $res = ManticoreDb::table('test')->describe()->result();
 $res = ManticoreDb::tableDescribe('test');
 ```
+
+The first two forms return a list of rows. `tableDescribe()` keys the rows by `Field`.
+
 | Field   | Type     | Properties     |
 |---------|----------|----------------|
 | id      | bigint   |                |
 | title   | text     | indexed stored |
 | price   | float    |                |
 
-### SHOW TABLE <table_name> STATUS
+### SHOW TABLE STATUS
 
 ```php
 $res = ManticoreDb::sql('SHOW TABLE test STATUS')->get();
 $res = ManticoreDb::table('test')->status()->result();
 $res = ManticoreDb::table('other')->status('test')->result(); // the argument wins over table()
 $res = ManticoreDb::tableStatus('test');
-// Result is array with variables describing the status of the table 
 ```
 
-### SHOW TABLE <table_name> SETTINGS
+The query forms return rows with `Variable_name` and `Value`. `tableStatus()` returns an
+associative array keyed by variable name.
+
+### SHOW TABLE SETTINGS
 
 ```php
 $res = ManticoreDb::sql('SHOW TABLE test SETTINGS')->get();
 $res = ManticoreDb::table('test')->settings()->result();
 $res = ManticoreDb::table('other')->settings('test')->result(); // the argument wins over table()
 $res = ManticoreDb::tableSettings('test');
-// Result is array with settings of the table 
 ```
+
+The query forms return rows with `Variable_name` and `Value`. `tableSettings()` returns an
+associative array keyed by setting name. The facade inspection methods (`showTables()`,
+`showCreate()`, `tableDescribe()`, `tableStatus()` and `tableSettings()`) throw
+`QueryErrorException` when the server reports an error.

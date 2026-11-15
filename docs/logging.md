@@ -4,62 +4,57 @@
 
 ## Logging
 
-The Manticore Query Builder supports compatible PSR Loggers. There are several where DEBUG, INFO or ERROR messages are logged.
+The builder accepts a PSR-3 `Psr\Log\LoggerInterface` implementation. Ordinary queries log
+SQL at INFO level and results at DEBUG level; execution errors are logged at ERROR level.
+Service queries do not necessarily emit the same INFO/DEBUG entries.
 
 ### Enable logging
 
-You can define common logger for all connection and queries.
+Set a common logger for pooled connections and new queries:
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
+use Psr\Log\NullLogger;
 
-// create new logger instance
-$logger = new Logger();
+// NullLogger discards messages; replace it with your application's PSR-3 logger for output
+$logger = new NullLogger();
 
 ManticoreDb::init($config);
 ManticoreDb::setLogger($logger);
 ```
 
-You can define a logger for the specified connection.
+`psr/log` is already a runtime dependency. No separate logging implementation is required
+unless you want to write messages to a file or another destination.
+
+Set a logger for one configured connection, using the application's existing `$logger`:
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
 
-// create new logger instance
-$logger = new Logger();
-
-ManticoreDb::init($config);
-ManticoreDb::connection('test')->setLogger($logger);
+ManticoreDb::connection('default')->setLogger($logger);
 ```
 
-You can define a logger for single queries.
+Set a logger for an individual query:
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
 
-// create new logger instance
-$logger = new Logger();
-
-ManticoreDb::init($config);
-ManticoreDb::table('test')->match($match)->where($where)->setLogger($logger)->get();
-ManticoreDb::sql($sql)->setLogger($logger)->exec();
+ManticoreDb::table('products')->match('galaxy')->setLogger($logger)->get();
+ManticoreDb::sql('SHOW TABLES')->setLogger($logger)->exec();
 ```
+
+A `Query` copies the connection's logger when it is created. Changing the common or connection
+logger affects subsequent queries, but an existing `Query` keeps its logger until you call its
+own `setLogger()`. `init()` resets the common logger and connection pool.
 
 ### Disable logging
 ```php
 use avadim\Manticore\QueryBuilder\Builder as ManticoreDb;
 
-// create new logger instance
-$logger = new Logger();
+// Disable logging for this query
+ManticoreDb::sql('SHOW TABLES')->setLogger(false)->exec();
 
-ManticoreDb::init($config);
-// Set logging
-ManticoreDb::setLogger($logger);
+// Disable logging for subsequent queries from this connection
+ManticoreDb::connection('default')->setLogger(false);
 
-// Disable logging for next request
-ManticoreDb::sql($sql)->setLogger(false)->exec();
-
-// Disable logging for the specified connection
-ManticoreDb::connection('test2')->setLogger(false);
-
-// Disable logging for all
+// Disable the common logger and loggers of pooled connections for subsequent queries
 ManticoreDb::setLogger(false);
 ```
 
