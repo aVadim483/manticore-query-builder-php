@@ -33,9 +33,11 @@ Manticore Search server documentation: https://manual.manticoresearch.com/
 
 ## 2.7: batch import and hybrid search
 
-Available since [2.7.0](CHANGELOG.md). This release adds [bounded iterable INSERT/REPLACE](docs/writing.md#streaming-batch-insertreplace),
+Version [2.7.0](CHANGELOG.md) introduced [bounded iterable INSERT/REPLACE](docs/writing.md#streaming-batch-insertreplace),
 [JSON filters and composed full-text conditions](docs/json-fulltext.md), and
 [extended numeric KNN and hybrid search](docs/knn-hybrid.md).
+Version [2.7.1](CHANGELOG.md) corrects the English and Russian documentation;
+runtime behavior and dependencies are unchanged.
 
 The snippet below assumes `products` has a numeric `stock` attribute, a JSON
 `info.tags` array and a KNN-indexed `embedding`. Supply a numeric `$vector` with
