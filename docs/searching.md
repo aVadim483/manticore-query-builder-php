@@ -2,6 +2,8 @@
 
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
+See also [JSON filters and composed full-text conditions](json-fulltext.md).
+
 Jump To:
 * [Retrieving Rows From A Table](#retrieving-rows-from-a-table)
 * [Rows without metadata](#rows-without-metadata)

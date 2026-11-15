@@ -19,6 +19,123 @@ class QueryConditionSet
         $this->bool = $bool;
     }
 
+    /** Internal extension point shared by Query and nested condition groups. */
+    public function addSearchCondition(QueryCondition $condition): self
+    {
+        if (!$this->bool) {
+            $this->bool = $condition->boolean();
+        }
+        $this->operands[] = $condition;
+        return $this;
+    }
+
+    public function __clone()
+    {
+        foreach ($this->operands as $key => $operand) {
+            $this->operands[$key] = clone $operand;
+        }
+    }
+
+    public function hasFullText(): bool
+    {
+        foreach ($this->operands as $operand) {
+            if ($operand instanceof FullTextCondition || $operand instanceof self && $operand->hasFullText()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public function hasRawConditions(): bool
+    {
+        foreach ($this->operands as $operand) {
+            if ($operand instanceof self ? $operand->hasRawConditions() : $operand->isRaw()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public function computedExpressions(): array
+    {
+        $expressions = [];
+        foreach ($this->operands as $operand) {
+            if ($operand instanceof JsonCondition || $operand instanceof self) {
+                foreach ($operand->computedExpressions() as $alias => $expression) {
+                    if (isset($expressions[$alias]) && $expressions[$alias] !== $expression) {
+                        throw new \LogicException('Computed JSON alias collision');
+                    }
+                    $expressions[$alias] = $expression;
+                }
+            }
+        }
+        return $expressions;
+    }
+
+    public function fullTextExpression(): ?string
+    {
+        if (!$this->hasFullText()) {
+            return null;
+        }
+        return $this->partition()[0];
+    }
+
+    public function attributeString(?bool $needBool = false): string
+    {
+        if (!$this->hasFullText()) {
+            return $this->asString($needBool);
+        }
+        return $this->partition()[1]->asString($needBool);
+    }
+
+    /** Separate only conjunctions; a mixed OR cannot be represented by one MATCH. */
+    private function partition(): array
+    {
+        $texts = [];
+        $attributes = clone $this;
+        $attributes->operands = [];
+        $hasOr = false;
+        foreach ($this->operands as $position => $operand) {
+            $boolean = $operand instanceof self ? $operand->bool : $operand->boolean();
+            $hasOr = $hasOr || ($position > 0 && $boolean === 'OR');
+            if ($operand instanceof FullTextCondition) {
+                $texts[] = [$boolean, $operand->expression()];
+            }
+            elseif ($operand instanceof self) {
+                [$text, $children] = $operand->partition();
+                if ($text !== null) {
+                    $texts[] = [$boolean, $text];
+                }
+                if ($children->operands) {
+                    $attributes->operands[] = $children;
+                }
+            }
+            else {
+                $attributes->operands[] = clone $operand;
+            }
+        }
+        if (!$texts) {
+            return [null, $attributes];
+        }
+        if ($this->negate) {
+            throw new \LogicException('Negated whereFullText() groups are not supported');
+        }
+        if ($attributes->operands && $hasOr) {
+            throw new \LogicException('whereFullText() cannot be combined with attribute filters through OR');
+        }
+        $groups = [];
+        $terms = [];
+        foreach ($texts as [$boolean, $text]) {
+            if ($boolean === 'OR' && $terms) {
+                $groups[] = '(' . implode(' ', $terms) . ')';
+                $terms = [];
+            }
+            $terms[] = '(' . $text . ')';
+        }
+        $groups[] = '(' . implode(' ', $terms) . ')';
+        return [implode(' | ', $groups), $attributes];
+    }
+
     /**
      * Wrap the whole group in NOT(), as whereNot() asks for
      *

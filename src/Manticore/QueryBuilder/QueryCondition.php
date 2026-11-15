@@ -34,6 +34,18 @@ class QueryCondition
         return Query::quoteParam($val);
     }
 
+    /** Boolean connecting this leaf to the previous operand. */
+    public function boolean(): string
+    {
+        return $this->bool;
+    }
+
+    /** Whether the leaf was supplied as an unparsed SQL fragment. */
+    public function isRaw(): bool
+    {
+        return $this->operator === null;
+    }
+
     /**
      * @param $bool
      * @param $field

@@ -304,6 +304,7 @@ class Query
     protected function _castResult(array $rows): array
     {
         $types = $this->columnTypes();
+        $hiddenExpressions = $this->hiddenSearchExpressions();
         $result = [];
         // a join answers with one row per pair, so the id of the left table repeats itself as
         // soon as the relation is one to many - keying by it would keep the last row of every
@@ -359,6 +360,9 @@ class Query
                 }
             }
             foreach ($this->exprColumns as $alias => $expression) {
+                unset($row[$alias]);
+            }
+            foreach ($hiddenExpressions as $alias => $expression) {
                 unset($row[$alias]);
             }
             if (isset($row['@knn_dist'])) {
@@ -646,6 +650,9 @@ class Query
      */
     public function match(string $match, $columns = null): Query
     {
+        if ($this->hasComposedFullText()) {
+            throw new \LogicException('match() cannot be combined with whereFullText()');
+        }
         $this->selectColumns(null);
         $this->match = $columns ? '@(' . implode(',', (array)$columns) . ') ' . $match : $match;
 
@@ -1166,7 +1173,7 @@ class Query
      */
     protected function _needScore(): bool
     {
-        return $this->score ?? ($this->match !== null && $this->match !== '');
+        return $this->score ?? (($this->match !== null && $this->match !== '') || $this->hasComposedFullText());
     }
 
     // +++ OPTIONS +++ //
@@ -1307,6 +1314,39 @@ class Query
         return $this->option('ranker', $value);
     }
 
+    /** Expression ranker without changing the signature inherited by existing clients. */
+    public function rankerExpression(string $formula, string $ranker = 'expr'): Query
+    {
+        if (!in_array($ranker, ['expr', 'export'], true)) {
+            throw new \InvalidArgumentException('An expression ranker must be expr or export');
+        }
+        if (trim($formula) === '' || strpos($formula, "\0") !== false) {
+            throw new \InvalidArgumentException('A ranker expression must be non-empty and contain no null bytes');
+        }
+        return $this->option('ranker', $ranker . '(' . self::quoteParam($formula) . ')');
+    }
+
+    /** Internal extension point also available to nested condition groups. */
+    public function addSearchCondition(QueryCondition $condition): Query
+    {
+        if ($condition instanceof FullTextCondition && $this->match !== null) {
+            throw new \LogicException('whereFullText() cannot be combined with match()');
+        }
+        $this->conditions->addSearchCondition($condition);
+        return $this;
+    }
+
+    public function hasComposedFullText(): bool
+    {
+        return $this->conditions->hasFullText();
+    }
+
+    /** Hidden JSON SELECT expressions, including expressions in nested groups. */
+    public function hiddenSearchExpressions(): array
+    {
+        return $this->conditions->computedExpressions();
+    }
+
     /**
      * Expands keywords with exact forms and/or stars when possible
      *
@@ -1394,6 +1434,27 @@ class Query
             $result .= ', ' . $expression . ' as ' . $alias;
         }
 
+        $hidden = $this->hiddenSearchExpressions();
+        if ($hidden) {
+            $types = $this->columnTypes();
+            foreach ($hidden as $alias => $expression) {
+                if (array_key_exists($alias, $types) || isset($this->exprColumns[$alias]) || isset($this->distanceColumns[$alias])) {
+                    throw new \LogicException('Computed JSON alias conflicts with a selected attribute: ' . $alias);
+                }
+                foreach ($this->select as $column) {
+                    if (preg_match('/(?:^|\s+(?:AS\s+)?)`?' . preg_quote($alias, '/') . '`?\s*$/iD', $column)) {
+                        throw new \LogicException('Computed JSON alias conflicts with a selected column: ' . $alias);
+                    }
+                }
+                foreach ($this->facets as $facet) {
+                    if (preg_match('/\bAS\s+`?' . preg_quote($alias, '/') . '`?(?:\s|$)/i', (string)$facet)) {
+                        throw new \LogicException('Computed JSON alias conflicts with a facet column: ' . $alias);
+                    }
+                }
+                $result .= ', ' . $expression . ' as ' . $alias;
+            }
+        }
+
         if ($this->highlight) {
             $highlight = 'HIGHLIGHT(';
             if (!empty($this->highlight['options'])) {
@@ -1455,6 +1516,13 @@ class Query
      */
     protected function _sqlMatch(?bool $raw = false): ?string
     {
+        $text = $this->conditions->fullTextExpression();
+        if ($text !== null) {
+            if ($this->match !== null) {
+                throw new \LogicException('whereFullText() cannot be combined with match()');
+            }
+            return $raw ? $text : self::quoteParam($text);
+        }
         if (!empty($this->match)) {
             return !$raw ? self::quoteParam($this->match) : $this->match;
         }
@@ -1469,7 +1537,7 @@ class Query
      */
     protected function _sqlWhere(?bool $needBool = false): string
     {
-        return trim($this->conditions->asString($needBool));
+        return trim($this->conditions->attributeString($needBool));
     }
 
     /**
@@ -1577,6 +1645,9 @@ class Query
      */
     protected function _makeSql(): string
     {
+        if (in_array($this->command, ['UPDATE', 'DELETE'], true) && $this->hiddenSearchExpressions()) {
+            throw new \LogicException('Computed JSON membership/length filters are supported only for SELECT');
+        }
         if ($this->command === 'SELECT' || $this->command === 'UPDATE' || $this->command === 'DELETE') {
             if ($this->command === 'SELECT') {
                 $sql = 'SELECT ' . $this->_sqlSelectColumns() . ' FROM ' . $this->_sqlTable() . $this->_sqlJoins();

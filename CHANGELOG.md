@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   completed batches, failure positions, unknown write outcomes and separate ID errors.
   Optional immediate ID callbacks preserve bounded memory; collecting all IDs is explicit.
   Existing write methods, custom clients and default ID retrieval remain unchanged.
+* JSON array membership, overlap, non-null path and length helpers support nested
+  conditions, validated paths and hidden SELECT expressions. Composable
+  `whereFullText()` / `orWhereFullText()` compile nested text conditions into one
+  escaped MATCH; unsupported text/attribute OR combinations fail explicitly.
+  `rankerExpression()` adds safely quoted formulas without changing `ranker()`.
 
 ## [2.6.0] - 2026-10-20
 

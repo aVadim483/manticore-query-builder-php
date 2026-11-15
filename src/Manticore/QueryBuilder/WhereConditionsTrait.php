@@ -11,6 +11,121 @@ namespace avadim\Manticore\QueryBuilder;
  */
 trait WhereConditionsTrait
 {
+    /** JSON-array membership: every candidate must occur in the stored array. */
+    public function whereJsonContains(string $column, $value): self
+    {
+        return $this->addJsonMembership('AND', $column, $value, false, false);
+    }
+
+    public function orWhereJsonContains(string $column, $value): self
+    {
+        return $this->addJsonMembership('OR', $column, $value, false, false);
+    }
+
+    public function whereJsonDoesntContain(string $column, $value): self
+    {
+        return $this->addJsonMembership('AND', $column, $value, true, false);
+    }
+
+    public function orWhereJsonDoesntContain(string $column, $value): self
+    {
+        return $this->addJsonMembership('OR', $column, $value, true, false);
+    }
+
+    public function whereJsonOverlaps(string $column, $value): self
+    {
+        return $this->addJsonMembership('AND', $column, $value, false, true);
+    }
+
+    public function orWhereJsonOverlaps(string $column, $value): self
+    {
+        return $this->addJsonMembership('OR', $column, $value, false, true);
+    }
+
+    public function whereJsonDoesntOverlap(string $column, $value): self
+    {
+        return $this->addJsonMembership('AND', $column, $value, true, true);
+    }
+
+    public function orWhereJsonDoesntOverlap(string $column, $value): self
+    {
+        return $this->addJsonMembership('OR', $column, $value, true, true);
+    }
+
+    private function addJsonMembership(string $boolean, string $column, $value, bool $not, bool $overlap): self
+    {
+        $path = JsonPath::compile($column);
+        $values = is_array($value) ? $value : [$value];
+        if (($values && array_keys($values) !== range(0, count($values) - 1)) || (!$values && !$overlap)) {
+            throw new \InvalidArgumentException('JSON contains needs a scalar or a non-empty list');
+        }
+        $terms = [];
+        foreach ($values as $item) {
+            if ((!is_string($item) && !is_bool($item) && !is_int($item) && !is_float($item))
+                || is_float($item) && !is_finite($item)) {
+                throw new \InvalidArgumentException('JSON candidates must be strings, booleans or finite numbers');
+            }
+            $terms[] = 'ANY(__mqb_value=' . Query::quoteParam($item) . ' FOR __mqb_value IN ' . $path . ')';
+        }
+        $expression = $terms ? '(' . implode($overlap ? ' OR ' : ' AND ', $terms) . ')' : '0';
+        return $this->addSearchCondition(new JsonCondition($boolean, $expression, '=', $not ? 0 : 1));
+    }
+
+    /** Manticore treats a missing path and JSON null alike. */
+    public function whereJsonContainsKey(string $column): self
+    {
+        return $this->whereNotNull(JsonPath::compile($column));
+    }
+
+    public function orWhereJsonContainsKey(string $column): self
+    {
+        return $this->orWhereNotNull(JsonPath::compile($column));
+    }
+
+    public function whereJsonDoesntContainKey(string $column): self
+    {
+        return $this->whereNull(JsonPath::compile($column));
+    }
+
+    public function orWhereJsonDoesntContainKey(string $column): self
+    {
+        return $this->orWhereNull(JsonPath::compile($column));
+    }
+
+    public function whereJsonLength(string $column, $operator, $value = null): self
+    {
+        return $this->addJsonLength('AND', $column, array_slice(func_get_args(), 1));
+    }
+
+    public function orWhereJsonLength(string $column, $operator, $value = null): self
+    {
+        return $this->addJsonLength('OR', $column, array_slice(func_get_args(), 1));
+    }
+
+    private function addJsonLength(string $boolean, string $column, array $arguments): self
+    {
+        $path = JsonPath::compile($column);
+        $operator = count($arguments) === 1 ? '=' : $arguments[0];
+        $value = count($arguments) === 1 ? $arguments[0] : $arguments[1];
+        if (!in_array($operator, ['=', '!=', '<>', '<', '<=', '>', '>='], true) || !is_int($value) || $value < 0) {
+            throw new \InvalidArgumentException('JSON length needs a comparison and a non-negative integer');
+        }
+        $method = $boolean === 'OR' ? 'orWhere' : 'andWhere';
+        return $this->{$method}(static function ($group) use ($path, $operator, $value) {
+            $group->whereNotNull($path)->addSearchCondition(new JsonCondition('AND', 'LENGTH(' . $path . ')', $operator, $value));
+        });
+    }
+
+    public function whereFullText($columns, string $text, array $options = []): self
+    {
+        return $this->addSearchCondition(new FullTextCondition('AND', $columns, $text, $options));
+    }
+
+    public function orWhereFullText($columns, string $text, array $options = []): self
+    {
+        return $this->addSearchCondition(new FullTextCondition('OR', $columns, $text, $options));
+    }
+
     /**
      * ANY(mva): at least one stored value satisfies the comparison.
      * Two arguments mean equality for a scalar, IN for a non-empty array.

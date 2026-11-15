@@ -8,6 +8,7 @@
 
 * [Configuration](configuration.md)
 * [Searching](searching.md)
+* [JSON filters and composed full-text conditions](json-fulltext.md)
 * [Inserting and replacing documents](writing.md)
 * [Create, Listing & Describe Tables](tables.md)
 * [ResultSet Class](result_set.md)
