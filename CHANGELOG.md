@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cached dimension/metric checks and explicit candidate limits. `withKnnDistance()`
   and `orderByKnnDistance()` preserve distance expressions across projections and
   reject alias collisions. Legacy `whereKnn()` retains its signature and defaults.
+* `hybridSearch()` / `hybridGet()` / `hybridFirst()` run independent text and vector
+  branches with common attribute filters and weighted RRF in PHP. `HybridResult`
+  exposes ranked hits, branch metadata and SQL-free pagination of a bounded union
+  window; the global total is explicitly unavailable. Exact uint64 IDs, branch
+  failures and metadata lifetime are preserved without requiring external models.
 
 ## [2.6.0] - 2026-10-20
 

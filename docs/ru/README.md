@@ -5,7 +5,7 @@
 - [Конфигурация и соединения](configuration.md)
 - [Поиск](searching.md)
 - [JSON-фильтры и составные полнотекстовые условия](json-fulltext.md)
-- [Расширенный числовой KNN](knn-hybrid.md)
+- [Расширенный KNN и гибридный поиск с RRF](knn-hybrid.md)
 - [Вставка и замена документов](writing.md)
 - [Создание и изменение таблиц](tables.md)
 - [ResultSet, метаданные и ошибки](result_set.md)

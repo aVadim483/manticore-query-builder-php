@@ -31,6 +31,29 @@ Query Builder для Manticore Search на PHP с синтаксисом в ст
 
 Документация сервера Manticore Search: https://manual.manticoresearch.com/
 
+## Готовящиеся API 2.7
+
+Следующий выпуск добавляет [пакетную запись из iterable](docs/ru/writing.md),
+[JSON-фильтры и составные полнотекстовые условия](docs/ru/json-fulltext.md),
+[расширенный числовой KNN и гибридный поиск](docs/ru/knn-hybrid.md).
+
+```php
+$result = ManticoreDb::table('products')->where('stock', '>', 0)
+    ->whereJsonContains('info.tags', 'sale')
+    ->hybridSearch('phone', 'embedding', $vector, [
+        'text_candidates' => 200,
+        'vector_candidates' => 200,
+        'knn_options' => ['ef' => 200],
+    ]);
+$rows = $result->rows();
+$windowSize = $result->windowTotal();
+$globalTotal = $result->totalFound(); // null: известен только размер окна кандидатов
+```
+
+Приложение передаёт числовой вектор; выдачи объединяются в PHP. Сохраняются PHP 7.4,
+старые сигнатуры и поведение чтения/записи по умолчанию. Новому KNN нужна серверная
+библиотека KNN; Laravel и внешний провайдер моделей не требуются.
+
 ## Смежные пакеты
 
 Это самостоятельный построитель запросов без обязательного фреймворка. Composer устанавливает

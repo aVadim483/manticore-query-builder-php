@@ -54,3 +54,66 @@ validated by Manticore. Legacy `ranker(string $value)` retains its signature and
 behavior.
 
 See the [Manticore KNN manual](https://manual.manticoresearch.com/Searching/KNN?static=true).
+
+## Hybrid search with RRF in PHP
+
+```php
+$query = ManticoreDb::table('products')->where('stock', '>', 0);
+$result = $query->hybridSearch('phone', 'embedding', [0.2, 0.7, 0.1], [
+    'text_candidates' => 200,
+    'vector_candidates' => 150,
+    'text_weight' => 1.5,
+    'vector_weight' => 1,
+    'rank_constant' => 60,
+    'knn_options' => ['ef' => 200, 'prefilter' => true],
+]);
+$rows = $result->rows();             // list of document arrays
+$first = $result->first();           // array|null
+$hits = $result->hits();             // HybridHit[]
+$page = $result->paginateWindow(20, 2); // data, page, per_page, window_total, total_found
+```
+
+`hybridSearch()`, `hybridGet()` and `hybridFirst()` execute immediately. The latter
+two return document arrays / the first document. Common structured attribute
+filters (including nested conditions, JSON and MVA) apply to both branches.
+The original query is cloned and retains its filters and options.
+
+The first branch retrieves text matches; the second independently retrieves vector
+neighbors. A document may occur in either or both. Fusion runs in PHP, using
+`sum(weight / (rank_constant + rank))`, with ranks starting at 1. This is distinct
+from a single `match()->whereKnn()` query and from server-side fusion. Applications
+supply embeddings; no model provider is called by this API.
+
+The common query must select all columns and have no existing MATCH/KNN, raw SQL
+predicates, joins, grouping, facets, highlighting, visible computed expressions,
+ordering, limit or offset. Text parameters are escaped by default; `escape => false`
+explicitly enables native MATCH syntax. The options are limited to the keys shown
+above plus `escape`; unknown options fail before execution. Candidate windows are
+integers from 1 to 10000; weights are finite numbers from 0 to 1000000 with at least
+one positive weight; `rank_constant` is an integer from 0 to 1000000. A zero-weight
+branch is skipped, and empty text skips the text branch. The numeric vector and
+KNN options must remain valid even when the vector branch is disabled.
+
+Each `HybridHit` exposes `id()`, `document()`, `score()`, `textRank()`, `vectorRank()`,
+`textScore()` and `distance()`. An absent branch has null evidence and contributes
+zero. Text-branch document fields win for overlapping IDs. Equal fused scores sort
+by unsigned numeric ID ascending. IDs outside PHP's integer range are returned as
+exact decimal strings, using an independent SQL string transport alias.
+
+`windowTotal()` and `count($result)` count the materialized union window.
+`totalFound()` is null: the global union total is unknown. `textMeta()` and
+`vectorMeta()` expose captured server metadata, or null for an absent branch.
+Never add branch totals. `paginateWindow()` slices only this window without SQL;
+its `total_found` remains null. Deep windows cost more memory, traffic and server
+work. An explicit `max_matches` must cover both declared candidate windows;
+otherwise the helper sets it on each clone as needed.
+
+Searches run sequentially on the same client without a shared snapshot. Metadata
+is captured before casting or logging can run other queries. A branch error is
+propagated even when the other branch succeeded. There is no retry or silent
+fallback. `lastResultSet()` continues to describe the last executed SQL branch;
+keep the returned `HybridResult` for the combined result. Duplicate IDs within a
+branch and collisions with reserved transport aliases are rejected.
+
+`HybridResult::fuse($textResultSet, $vectorResultSet, $options)` exposes pure fusion
+for relevance tests and captured data without making database calls.

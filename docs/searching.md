@@ -3,7 +3,7 @@
 # Manticore Search Query Builder for PHP (unofficial PHP client)
 
 See also [JSON filters and composed full-text conditions](json-fulltext.md).
-The [extended KNN guide](knn-hybrid.md) covers per-query vector options and distances.
+The [KNN and hybrid guide](knn-hybrid.md) covers vector options, distances and RRF fusion.
 
 Jump To:
 * [Retrieving Rows From A Table](#retrieving-rows-from-a-table)

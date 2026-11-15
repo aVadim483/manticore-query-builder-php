@@ -30,6 +30,29 @@ Features
 
 Manticore Search server documentation: https://manual.manticoresearch.com/
 
+## Upcoming 2.7 APIs
+
+The next release adds [bounded iterable INSERT/REPLACE](docs/writing.md#streaming-batch-insertreplace),
+[JSON filters and composed full-text conditions](docs/json-fulltext.md), and
+[extended numeric KNN and hybrid search](docs/knn-hybrid.md).
+
+```php
+$result = ManticoreDb::table('products')->where('stock', '>', 0)
+    ->whereJsonContains('info.tags', 'sale')
+    ->hybridSearch('phone', 'embedding', $vector, [
+        'text_candidates' => 200,
+        'vector_candidates' => 200,
+        'knn_options' => ['ef' => 200],
+    ]);
+$rows = $result->rows();
+$windowSize = $result->windowTotal();
+$globalTotal = $result->totalFound(); // null: only the candidate window is known
+```
+
+The application supplies the numeric vector; fusion runs in PHP. New APIs retain
+PHP 7.4, existing method signatures and default read/write behavior. The new KNN
+path requires the server KNN library; no Laravel or model provider is required.
+
 ## Related packages
 
 This builder works without a framework. Composer installs its PHP dependencies; the two

@@ -13,6 +13,7 @@ class Query
     use WhereConditionsTrait;
     use BatchWriteTrait;
     use KnnSearchTrait;
+    use HybridSearchTrait;
 
     /**
      * Placeholder for the argument of a unary operator.
@@ -313,7 +314,9 @@ class Query
         $keyById = !$this->joins;
         foreach ($rows as $num => $row) {
             // the id of the document keys the result when it is among the selected columns
-            $resNum = $keyById ? ($row['id'] ?? $num) : $num;
+            $resNum = !empty($this->captureSearchMeta) && isset($row['__mqb_hybrid_id'])
+                ? 'hybrid:' . (string)$row['__mqb_hybrid_id']
+                : ($keyById ? ($row['id'] ?? $num) : $num);
             foreach ($row as $col => $val) {
                 if (isset($types[$col])) {
                     switch ($types[$col]) {
@@ -439,7 +442,7 @@ class Query
             }
             elseif ($parsedSql['command'] === 'SELECT') {
                 $this->validateKnnExecution();
-                if ($this->skipMeta) {
+                if ($this->skipMeta || !empty($this->captureSearchMeta)) {
                     // Casting must not run DESCRIBE after the search: getMeta() is called later.
                     $this->columnTypes();
                 }
@@ -447,6 +450,10 @@ class Query
                     ? 'SELECT weight() as _score, ' . substr($parsedSql['query'], 6)
                     : $parsedSql['query'];
                 $response = $this->client->select($query, $this->params);
+                if (!empty($this->captureSearchMeta) && !$this->skipMeta) {
+                    // Capture before a logger or result casting can issue another command.
+                    $capturedMeta = $this->client->select('SHOW META');
+                }
             }
             else {
                 $response = $this->client->query($parsedSql['query'], $this->params);
@@ -521,7 +528,7 @@ class Query
                     }
                 }
                 if (!$this->skipMeta) {
-                    $meta = $this->client->select('SHOW META');
+                    $meta = $capturedMeta ?? $this->client->select('SHOW META');
                     $result['meta'] = Meta::fromRows($meta['data'][0] ?? [])->toArray();
                 }
             }
