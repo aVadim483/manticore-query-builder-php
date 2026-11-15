@@ -318,6 +318,76 @@ final class BatchWriteTest extends UnitTestCase
         $this->assertCount(1, $describes);
     }
 
+    public function testUnsignedDocumentIdsAreCompiledExactlyForInsertAndReplace(): void
+    {
+        foreach (['insertBatch' => 'INSERT', 'replaceBatch' => 'REPLACE'] as $method => $command) {
+            $client = $this->client();
+            $result = $this->queryFor($client)->$method([
+                ['id' => '18446744073709551614', 'title' => 'large'],
+                ['id' => '00018446744073709551615', 'title' => 'max'],
+                ['id' => PHP_INT_MAX, 'title' => 'php max'],
+                ['id' => '00042', 'title' => 'normalized'],
+                ['id' => 0, 'title' => 'generated'],
+            ]);
+
+            $this->assertTrue($result->success());
+            $this->assertSame(5, $result->confirmedRows());
+            $this->assertSqlSame($command . ' INTO products(id,title) VALUES '
+                . "(18446744073709551614,'large'),(18446744073709551615,'max'),("
+                . PHP_INT_MAX . ",'php max'),(42,'normalized'),(0,'generated')", $client->writes[0]);
+        }
+    }
+
+    /** @dataProvider invalidDocumentIds */
+    public function testInvalidDocumentIdIsRejectedBeforeSendingItsBatch($id): void
+    {
+        $client = $this->client();
+        $result = $this->queryFor($client)->insertBatch([
+            ['id' => 1, 'title' => 'buffered'], ['id' => $id, 'title' => 'invalid'],
+        ], ['max_rows' => 2]);
+
+        $this->assertFalse($result->success());
+        $this->assertInstanceOf(\InvalidArgumentException::class, $result->error());
+        $this->assertSame(0, $result->confirmedRows());
+        $this->assertSame(1, $result->failedPosition());
+        $this->assertFalse($result->outcomeUnknown());
+        $this->assertCount(0, $client->writes);
+    }
+
+    public function invalidDocumentIds(): array
+    {
+        return [
+            [-1], ['-1'], ['-0'], [1.0], [18446744073709551614.0], [true], [false], [null], [[]],
+            ['18446744073709551616'], ['00018446744073709551616'], ['1e3'], ['+1'], [' 1'], ['1 '], ['1.0'], [''],
+        ];
+    }
+
+    public function testSignedUint64IdTransportValuesAreNormalizedWithoutFloat(): void
+    {
+        $client = $this->client();
+        $client->idResponses = ['-2,-1,-9223372036854775808'];
+        $result = $this->queryFor($client)->insertBatch([
+            ['id' => 1, 'title' => 'a'], ['id' => 2, 'title' => 'b'], ['id' => 3, 'title' => 'c'],
+        ], ['collect_ids' => true]);
+
+        $this->assertTrue($result->success());
+        $this->assertSame(['18446744073709551614', '18446744073709551615', '9223372036854775808'], $result->ids());
+    }
+
+    public function testIdsOutsideUnsignedOrSignedTransportRangeAreRejected(): void
+    {
+        foreach (['18446744073709551616', '-9223372036854775809', '-0'] as $id) {
+            $client = $this->client();
+            $client->idResponses = [$id];
+            $result = $this->queryFor($client)->insertBatch([['title' => 'a']], ['collect_ids' => true]);
+
+            $this->assertFalse($result->success());
+            $this->assertNotNull($result->idError());
+            $this->assertSame(1, $result->confirmedRows());
+            $this->assertSame([], $result->ids());
+        }
+    }
+
     public function testSharedLastResultSlotAndSourceQueryStateArePreserved(): void
     {
         $slot = [];

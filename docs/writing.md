@@ -181,6 +181,13 @@ cannot silently restrict an INSERT. Each row must have the same set of plain col
 column order may differ. Values use the existing schema-aware formatter. Raw expressions,
 objects, resources, non-finite numbers and recursive/deeper-than-64-level arrays are rejected.
 
+An explicit document `id` must be a non-negative PHP integer or a decimal digit string
+within `0..18446744073709551615`. Leading zeroes are normalized; large digit strings
+are compiled without converting through PHP's signed integer or floating-point types.
+Floats, booleans, negative values and out-of-range IDs are rejected before sending their
+batch. Omit `id` or pass zero to request server-generated IDs. These stricter rules
+apply to the new batch methods; existing write methods retain their previous contracts.
+
 ```php
 $rows = (static function () {
     for ($i = 1; $i <= 5000; ++$i) {
@@ -217,7 +224,9 @@ one input row, not the entire source. `collect_ids=true` deliberately changes th
 Without either ID option there is no `LAST_INSERT_ID()` query, regardless of
 `lazy_insert_ids`. With either option IDs are read after the write acknowledgement and
 before a callback can issue another write on the same connection. Large IDs outside
-PHP's integer range remain decimal strings. `on_ids` does not populate `ids()` unless
+PHP's integer range remain decimal strings. A signed two's-complement ID from the
+server is normalized to the same unsigned decimal value without floating-point arithmetic.
+`on_ids` does not populate `ids()` unless
 `collect_ids` is also true. It may write a progress checkpoint; a callback failure stops
 the import after the already acknowledged batch.
 

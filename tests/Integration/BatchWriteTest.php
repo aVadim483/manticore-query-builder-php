@@ -73,4 +73,33 @@ final class BatchWriteTest extends IntegrationTestCase
         $this->assertFalse($result->outcomeUnknown());
         $this->assertSame(1, ManticoreDb::table($table)->count());
     }
+
+    public function testUint64DocumentIdsKeepTheirExactValuesForInsertAndReplace(): void
+    {
+        $table = $this->createTable(['title' => 'text', 'marker' => 'string'], 'batch_uint64');
+        $ids = ['18446744073709551614', '18446744073709551615'];
+        $insert = ManticoreDb::table($table)->insertBatch([
+            ['id' => $ids[0], 'title' => 'first', 'marker' => 'first'],
+            ['id' => '000' . $ids[1], 'title' => 'second', 'marker' => 'second'],
+        ], ['max_rows' => 1, 'collect_ids' => true]);
+
+        $this->assertTrue($insert->success(), (string)($insert->error() ?? $insert->idError()));
+        $this->assertSame($ids, $insert->ids());
+        foreach (['first', 'second'] as $position => $marker) {
+            $row = ManticoreDb::table($table)->select(['TO_STRING(id) AS exact_id', 'title'])
+                ->where('marker', $marker)->first();
+            $this->assertContains($row['exact_id'], [$ids[$position], ['-2', '-1'][$position]]);
+        }
+
+        $replace = ManticoreDb::table($table)->replaceBatch([
+            ['id' => $ids[0], 'title' => 'replaced', 'marker' => 'first'],
+        ], ['collect_ids' => true]);
+        $this->assertTrue($replace->success(), (string)($replace->error() ?? $replace->idError()));
+        $this->assertSame([$ids[0]], $replace->ids());
+        $row = ManticoreDb::table($table)->select(['TO_STRING(id) AS exact_id', 'title'])
+            ->where('marker', 'first')->first();
+        $this->assertContains($row['exact_id'], [$ids[0], '-2']);
+        $this->assertSame('replaced', $row['title']);
+        $this->assertSame(2, ManticoreDb::table($table)->count());
+    }
 }

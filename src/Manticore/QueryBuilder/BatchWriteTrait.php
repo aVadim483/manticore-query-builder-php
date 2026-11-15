@@ -50,7 +50,7 @@ trait BatchWriteTrait
         $confirmed = $completed = $position = $start = 0;
         $error = $idError = $failedPosition = $failedBatch = null;
         $unknown = false;
-        $collectedIds = $tuples = $columns = $types = [];
+        $collectedIds = $tuples = $columns = $types = $encoders = [];
         $header = '';
         $bytes = 0;
 
@@ -179,6 +179,9 @@ trait BatchWriteTrait
                         $this->indexPool[$table]['describe'] = $description;
                         $this->indexPool[$table]['columnsType'] = $types;
                     }
+                    foreach ($columns as $column) {
+                        $encoders[$column] = $this->_batchColumnEncoder($column, $types[$column] ?? null);
+                    }
                     $header = $command . ' INTO ' . $table . '(' . implode(',', $columns) . ') VALUES ';
                     $bytes = strlen($header);
                 }
@@ -188,11 +191,7 @@ trait BatchWriteTrait
                 $values = [];
                 foreach ($columns as $column) {
                     $this->_batchValidateValue($row[$column]);
-                    if (($types[$column] ?? null) === 'json' && is_array($row[$column])
-                        && json_encode($row[$column]) === false) {
-                        throw new \InvalidArgumentException('Invalid JSON value in batch column ' . $column);
-                    }
-                    $values[] = Parser::formatValue($row[$column], $types[$column] ?? null);
+                    $values[] = $encoders[$column]($row[$column]);
                 }
                 $tuple = '(' . implode(',', $values) . ')';
                 if (strlen($header) + strlen($tuple) > $maxBytes) {
@@ -226,6 +225,42 @@ trait BatchWriteTrait
 
         return new BatchResult($confirmed, $completed, $failedPosition, $failedBatch,
             $error, $idError, $unknown, $collectedIds);
+    }
+
+    /** Resolve schema-dependent handling once, retaining the legacy formatter for values. */
+    private function _batchColumnEncoder(string $column, ?string $type): callable
+    {
+        if (strcasecmp($column, 'id') === 0) {
+            return function ($value): string { return $this->_batchDocumentId($value); };
+        }
+        if ($type === 'json') {
+            return static function ($value) use ($column): string {
+                if (is_array($value)) {
+                    $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
+                    if ($json === false) {
+                        throw new \InvalidArgumentException('Invalid JSON value in batch column ' . $column);
+                    }
+                    return Parser::formatScalar($json, 'str');
+                }
+                return Parser::formatValue($value, 'json');
+            };
+        }
+        return static function ($value) use ($type): string { return Parser::formatValue($value, $type); };
+    }
+
+    /** A normalized, exact uint64 SQL literal, without signed-integer or float conversion. */
+    private function _batchDocumentId($id): string
+    {
+        if ((is_int($id) && $id >= 0) || (is_string($id) && preg_match('/^\d+$/D', $id))) {
+            $id = ltrim((string)$id, '0');
+            $id = $id === '' ? '0' : $id;
+            $max = '18446744073709551615';
+            if (strlen($id) < strlen($max) || (strlen($id) === strlen($max) && strcmp($id, $max) <= 0)) {
+                return $id;
+            }
+        }
+
+        throw new \InvalidArgumentException('Batch document IDs must be non-negative integers or uint64 decimal digit strings');
     }
 
     private function _batchValidateValue($value, int $depth = 0): void
@@ -279,11 +314,28 @@ trait BatchWriteTrait
         $result = [];
         foreach (explode(',', (string)$value) as $id) {
             $id = trim($id);
-            if (!preg_match('/^\d+$/D', $id)) {
+            if (!preg_match('/^-?\d+$/D', $id)) {
                 throw new \UnexpectedValueException('LAST_INSERT_ID() returned an invalid numeric ID');
             }
-            $id = ltrim($id, '0');
-            $id = $id === '' ? '0' : $id;
+            // Some SQL transports expose uint64 IDs as signed two's-complement decimals.
+            if ($id[0] === '-') {
+                $magnitude = ltrim(substr($id, 1), '0');
+                $signedMax = '9223372036854775808';
+                if ($magnitude === '' || strlen($magnitude) > strlen($signedMax)
+                    || (strlen($magnitude) === strlen($signedMax) && strcmp($magnitude, $signedMax) > 0)) {
+                    throw new \UnexpectedValueException('LAST_INSERT_ID() returned an invalid signed 64-bit ID');
+                }
+                $full = '18446744073709551616';
+                $magnitude = str_pad($magnitude, strlen($full), '0', STR_PAD_LEFT);
+                $borrow = 0;
+                $id = '';
+                for ($i = strlen($full) - 1; $i >= 0; --$i) {
+                    $digit = (int)$full[$i] - (int)$magnitude[$i] - $borrow;
+                    $borrow = $digit < 0 ? 1 : 0;
+                    $id = (string)($digit < 0 ? $digit + 10 : $digit) . $id;
+                }
+            }
+            $id = $this->_batchDocumentId($id);
             $max = (string)PHP_INT_MAX;
             $result[] = strlen($id) < strlen($max) || (strlen($id) === strlen($max) && strcmp($id, $max) <= 0)
                 ? (int)$id : $id;
