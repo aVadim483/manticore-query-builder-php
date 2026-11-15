@@ -11,6 +11,7 @@ use Psr\Log\LoggerInterface;
 class Query
 {
     use WhereConditionsTrait;
+    use BatchWriteTrait;
 
     /**
      * Placeholder for the argument of a unary operator.

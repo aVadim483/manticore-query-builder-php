@@ -170,3 +170,86 @@ or silently retry ID retrieval. Pending results contain a callback and should no
 `insertGetId()`, `replaceGetId()`, `insertResultSet()` and `replaceResultSet()` always load
 IDs immediately. Legacy custom clients keep the immediate path. PDOClient subclasses must
 explicitly opt in via `supportsDeferredInsert()` and preserve the deferred execution contract.
+
+## Streaming batch INSERT/REPLACE
+
+`insertBatch(iterable $rows, array $options = []): BatchResult` and `replaceBatch()`
+consume arrays, iterators or one-shot generators a batch at a time. They leave existing
+`insert()`/`replace()` behavior unchanged. Start with a table query without SELECT/WHERE,
+JOIN, MATCH, KNN, sorting, limits, facets, options, raw SQL or bindings: these clauses
+cannot silently restrict an INSERT. Each row must have the same set of plain column names;
+column order may differ. Values use the existing schema-aware formatter. Raw expressions,
+objects, resources, non-finite numbers and recursive/deeper-than-64-level arrays are rejected.
+
+```php
+$rows = (static function () {
+    for ($i = 1; $i <= 5000; ++$i) {
+        yield ['id' => $i, 'title' => 'Document ' . $i];
+    }
+})();
+
+$batch = ManticoreDb::table('products')->insertBatch($rows, [
+    'max_rows' => 500,
+    'max_bytes' => 1024 * 1024,
+]);
+
+if (!$batch->success()) {
+    $cause = $batch->error() ?? $batch->idError();
+    $confirmed = $batch->confirmedRows();
+    $position = $batch->failedPosition();
+    $unknown = $batch->outcomeUnknown();
+}
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `max_rows` | `1000` | Positive integer, maximum documents per SQL statement |
+| `max_bytes` | `1048576` | Positive integer, maximum final SQL bytes including header, escaping and separators |
+| `collect_ids` | `false` | Read IDs immediately per batch and retain all of them in `ids()`; memory grows with the whole import |
+| `on_ids` | `null` | Optional `function (array $ids, int $batchIndex)`; reads IDs immediately and delivers them one batch at a time, with a zero-based batch index |
+
+Choose `max_bytes` below the server packet limit with room for protocol overhead. It is
+a SQL byte budget, not an automatic discovery of the server limit. A document too large
+on its own is rejected before sending it. Rows buffered before a source/validation error
+are not flushed. The bounded-memory mode is the default; it keeps the current batch and
+one input row, not the entire source. `collect_ids=true` deliberately changes that bound.
+
+Without either ID option there is no `LAST_INSERT_ID()` query, regardless of
+`lazy_insert_ids`. With either option IDs are read after the write acknowledgement and
+before a callback can issue another write on the same connection. Large IDs outside
+PHP's integer range remain decimal strings. `on_ids` does not populate `ids()` unless
+`collect_ids` is also true. It may write a progress checkpoint; a callback failure stops
+the import after the already acknowledged batch.
+
+`BatchResult` is a summary independent of `lastResultSet()`:
+
+- `confirmedRows()` counts input documents in acknowledged statements, not distinct IDs,
+  PDO affected-row counts or a guarantee that an external transaction was committed.
+- `completedBatches()` counts acknowledged write statements, including one whose ID query
+  or callback subsequently failed.
+- `failedPosition()` is a zero-based ordinal in the source, independent of iterator keys.
+  `failedBatch()` gives its inclusive `start`/`end` range for a write, ID or callback failure;
+  source/validation errors have no failed SQL range.
+- `error()` preserves a write, input, source or callback exception. `idError()` separately
+  preserves an ID retrieval exception: that exception does not undo confirmed writes.
+- `outcomeUnknown()` marks an unacknowledged write that may have reached the server.
+  Structured PDO SQLSTATE data/constraint/syntax rejections are distinguished when available;
+  otherwise execution failures are conservatively treated as unknown. The reported count
+  excludes that uncertain batch and must not be interpreted as its rollback.
+  SQLSTATE-looking fragments in exception messages are not trusted; legacy clients
+  exposing only error text can therefore report an unknown outcome for a server rejection.
+- `success()` is false for either kind of error; `ids()` contains only IDs collected
+  successfully with `collect_ids=true`.
+
+`lastResultSet()` describes the last attempted write (successful or failed), not the whole
+import. A successful no-ID batch has boolean `true` as its result; a successful ID read
+sets its numeric ID or list of IDs. An ID failure leaves the write successful there;
+check `BatchResult::idError()`. A callback's own queries can update the shared last-result
+slot in the usual way. Empty input issues no SQL and keeps the slot unchanged.
+
+Invalid options or unsupported query clauses throw before iteration. Errors after iteration
+starts are returned in `BatchResult` and stop consumption. There is no implicit transaction,
+automatic rollback or retry. Within a caller transaction, acknowledgements are not commits;
+the caller owns commit/rollback. Save or reconcile the result before retrying a partial or
+unknown outcome. Legacy custom clients need only the existing `query()` response contract;
+the batch methods do not require a new client interface.
