@@ -31,9 +31,9 @@ Query Builder для Manticore Search на PHP с синтаксисом в ст
 
 Документация сервера Manticore Search: https://manual.manticoresearch.com/
 
-## Готовящиеся API 2.7
+## 2.7: пакетный импорт и гибридный поиск
 
-Следующий выпуск добавляет [пакетную запись из iterable](docs/ru/writing.md),
+Доступно начиная с [2.7.0](CHANGELOG.md). Выпуск добавляет [пакетную запись из iterable](docs/ru/writing.md),
 [JSON-фильтры и составные полнотекстовые условия](docs/ru/json-fulltext.md),
 [расширенный числовой KNN и гибридный поиск](docs/ru/knn-hybrid.md).
 

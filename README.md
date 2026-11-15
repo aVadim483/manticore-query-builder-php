@@ -30,9 +30,9 @@ Features
 
 Manticore Search server documentation: https://manual.manticoresearch.com/
 
-## Upcoming 2.7 APIs
+## 2.7: batch import and hybrid search
 
-The next release adds [bounded iterable INSERT/REPLACE](docs/writing.md#streaming-batch-insertreplace),
+Available since [2.7.0](CHANGELOG.md). This release adds [bounded iterable INSERT/REPLACE](docs/writing.md#streaming-batch-insertreplace),
 [JSON filters and composed full-text conditions](docs/json-fulltext.md), and
 [extended numeric KNN and hybrid search](docs/knn-hybrid.md).
 
